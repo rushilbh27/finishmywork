@@ -1,0 +1,10 @@
+{
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/coming-soon",
+      "permanent": false
+    }
+  ],
+  "buildCommand": "next build --no-lint"
+}

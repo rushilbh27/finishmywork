@@ -1,0 +1,190 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DIRECT_DATABASE_URL")
+}
+
+model User {
+  id                      Int            @id @default(autoincrement())
+  email                   String         @unique
+  name                    String
+  avatar                  String?
+  role                    UserRole       @default(STUDENT)
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  university              String?
+  major                   String?
+  year                    String?
+  bio                     String?
+  skills                  String[]
+  rating                  Float          @default(0)
+  reviewCount             Int            @default(0)
+  location                String
+  latitude                Float?
+  longitude               Float?
+  password                String?
+  emailVerified           DateTime?
+  verificationToken       String?
+  verificationTokenExpiry DateTime?
+  totpSecret              String?
+  twoFactorEnabled        Boolean        @default(false)
+  receivedMessages        Message[]      @relation("MessageReceiver")
+  sentMessages            Message[]      @relation("MessageSender")
+  notifications           Notification[]
+  payments                Payment[]      @relation("PaymentUser")
+  receivedReviews         Review[]       @relation("ReviewReceiver")
+  reviews                 Review[]       @relation("Reviewer")
+  acceptedTasks           Task[]         @relation("TaskAccepter")
+  postedTasks             Task[]         @relation("TaskPoster")
+
+  @@index([location])
+  @@index([rating])
+  @@index([createdAt])
+  @@index([email])
+  @@map("users")
+}
+
+model Task {
+  id            Int           @id @default(autoincrement())
+  title         String
+  description   String
+  subject       String
+  deadline      DateTime
+  budget        Decimal       @db.Decimal(10, 2)
+  status        TaskStatus    @default(OPEN)
+  paymentStatus PaymentStatus @default(PENDING)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  location      String
+  latitude      Float?
+  longitude     Float?
+  posterId      Int
+  accepterId    Int?
+  messages      Message[]
+  payments      Payment[]
+  reviews       Review[]
+  accepter      User?         @relation("TaskAccepter", fields: [accepterId], references: [id])
+  poster        User          @relation("TaskPoster", fields: [posterId], references: [id])
+
+  @@index([status])
+  @@index([location])
+  @@index([subject])
+  @@index([createdAt])
+  @@index([deadline])
+  @@index([posterId])
+  @@index([accepterId])
+  @@index([budget])
+  @@map("tasks")
+}
+
+model Review {
+  id         Int      @id @default(autoincrement())
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+  taskId     Int
+  reviewerId Int
+  receiverId Int
+  receiver   User     @relation("ReviewReceiver", fields: [receiverId], references: [id])
+  reviewer   User     @relation("Reviewer", fields: [reviewerId], references: [id])
+  task       Task     @relation(fields: [taskId], references: [id])
+
+  @@unique([taskId, reviewerId])
+  @@index([taskId])
+  @@index([receiverId])
+  @@index([createdAt])
+  @@map("reviews")
+}
+
+model Message {
+  id         Int      @id @default(autoincrement())
+  content    String
+  createdAt  DateTime @default(now())
+  taskId     Int
+  senderId   Int
+  receiverId Int
+  receiver   User     @relation("MessageReceiver", fields: [receiverId], references: [id])
+  sender     User     @relation("MessageSender", fields: [senderId], references: [id])
+  task       Task     @relation(fields: [taskId], references: [id])
+
+  @@index([taskId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+model Payment {
+  id              Int           @id @default(autoincrement())
+  amount          Decimal       @db.Decimal(10, 2)
+  status          PaymentStatus @default(PENDING)
+  stripePaymentId String?       @unique
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  taskId          Int
+  userId          Int
+  task            Task          @relation(fields: [taskId], references: [id])
+  user            User          @relation("PaymentUser", fields: [userId], references: [id])
+
+  @@index([status])
+  @@index([taskId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([stripePaymentId])
+  @@map("payments")
+}
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  email     String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  type      String
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+model Waitlist {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  phone     String?
+  city      String
+  college   String?
+  createdAt DateTime @default(now())
+  @@map("Waitlist")
+}
+
+enum UserRole {
+  STUDENT
+  ADMIN
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
