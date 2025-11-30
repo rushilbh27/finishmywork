@@ -10,10 +10,8 @@ export async function GET() {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = parseInt(session.user.id as string, 10)
-    if (isNaN(userId)) {
-      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 })
-    }
+    const userId = session.user.id
+    // User IDs are strings (CUID) in the database
 
     // ✅ Fetch counts and aggregates
     const [postedTasks, acceptedTasks, completedTasks, reviews] = await Promise.all([

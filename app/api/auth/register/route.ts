@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       // If user exists but is not verified, resend verification link and return verifyPending
       if (!existingUser.emailVerified) {
         const { createToken, hashToken, addMinutes } = await import('@/lib/tokens')
-        const token = createToken(32)
+        const token = createToken()
         const tokenHash = hashToken(token)
         const expiry = addMinutes(new Date(), 15)
 
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
 
     // Generate secure token for email verification
   const { createToken, hashToken, addMinutes } = await import('@/lib/tokens')
-    const token = createToken(32)
+    const token = createToken()
     const tokenHash = hashToken(token)
   const expiry = addMinutes(new Date(), 15)
 

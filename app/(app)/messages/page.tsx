@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useSearchParams } from "next/navigation"
+import Link from "next/link"
 import { motion } from "framer-motion"
 import { ChevronLeftIcon, MessageSquareIcon, SearchIcon } from "lucide-react"
 
@@ -10,10 +11,10 @@ import { InlineTaskChat } from "@/components/chat/InlineTaskChat"
 import { Input } from "@/components/ui/input"
 import { StatusChip } from "@/components/ui/status-chip"
 import { cn } from "@/lib/utils"
-import { useSocket } from "@/hooks/useSocket"
+import { useUserPresence } from "@/hooks/useUserPresence"
 
 interface TaskThread {
-  id: number
+  id: string
   title: string
   status: string
   lastMessage?: {
@@ -22,7 +23,7 @@ interface TaskThread {
     isOwn: boolean
   } | null
   partner: {
-    id: number
+    id: string
     name: string
   }
   isPoster: boolean
@@ -34,13 +35,16 @@ export default function MessagesPage() {
   const initialTaskId = searchParams.get("taskId")
 
   const [threads, setThreads] = useState<TaskThread[]>([])
-  const [activeTaskId, setActiveTaskId] = useState<number | null>(
-    initialTaskId ? parseInt(initialTaskId, 10) : null,
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(
+    initialTaskId ? String(initialTaskId) : null,
   )
   const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const [showListOnMobile, setShowListOnMobile] = useState(true)
-  const { socket, connected } = useSocket(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000')
+
+  // Get all partner IDs for presence tracking
+  const partnerIds = useMemo(() => threads.map(t => String(t.partner.id)), [threads])
+  const { isOnline } = useUserPresence(partnerIds)
 
   useEffect(() => {
     if (session?.user?.id) void fetchThreads()
@@ -54,7 +58,7 @@ export default function MessagesPage() {
       const data = (await res.json()) as TaskThread[]
       setThreads(Array.isArray(data) ? data : [])
       if (!activeTaskId && data.length > 0) {
-        setActiveTaskId(data[0].id)
+        setActiveTaskId(String(data[0].id))
         setShowListOnMobile(false)
       }
     } catch (err) {
@@ -63,55 +67,6 @@ export default function MessagesPage() {
       setLoading(false)
     }
   }
-
-  // Live updates for threads: remove if user is no longer participant, update status otherwise
-  useEffect(() => {
-    if (!socket || !connected || !session?.user?.id) return
-    const userId = parseInt(String(session.user.id), 10)
-
-    const onTaskUpdated = (payload: { task?: any }) => {
-      const updated = payload?.task
-      if (!updated) return
-      setThreads((prev) => {
-        const isParticipant = updated.posterId === userId || updated.accepterId === userId
-        const exists = prev.some((t) => t.id === updated.id)
-        if (!exists) return prev
-        if (!isParticipant) {
-          // If we lost access (e.g., unassigned as accepter), remove the thread
-          const next = prev.filter((t) => t.id !== updated.id)
-          if (activeTaskId === updated.id) {
-            setActiveTaskId(null)
-            setShowListOnMobile(true)
-          }
-          return next
-        }
-        // Still a participant: update status and title if changed
-        return prev.map((t) => (t.id === updated.id ? { ...t, status: updated.status, title: updated.title ?? t.title } : t))
-      })
-    }
-
-    const onTaskDeleted = (payload: { taskId?: number | string }) => {
-      const idVal = payload?.taskId
-      if (idVal == null) return
-      const id = typeof idVal === 'string' ? parseInt(idVal, 10) : idVal
-      setThreads((prev) => {
-        const next = prev.filter((t) => t.id !== id)
-        if (activeTaskId === id) {
-          setActiveTaskId(null)
-          setShowListOnMobile(true)
-        }
-        return next
-      })
-    }
-
-    socket.on('task:updated', onTaskUpdated)
-    socket.on('task:deleted', onTaskDeleted)
-
-    return () => {
-      socket.off('task:updated', onTaskUpdated)
-      socket.off('task:deleted', onTaskDeleted)
-    }
-  }, [socket, connected, session?.user?.id, activeTaskId])
 
   const filteredThreads = useMemo(() => {
     if (!searchQuery) return threads
@@ -124,7 +79,7 @@ export default function MessagesPage() {
     )
   }, [threads, searchQuery])
 
-  const activeThread = threads.find((t) => t.id === activeTaskId) || null
+  const activeThread = threads.find((t) => String(t.id) === String(activeTaskId)) || null
 
   if (loading) {
     return (
@@ -176,7 +131,7 @@ export default function MessagesPage() {
                   key={thread.id}
                   type="button"
                   onClick={() => {
-                    setActiveTaskId(thread.id)
+                    setActiveTaskId(String(thread.id))
                     setShowListOnMobile(false)
                   }}
                   className={cn(
@@ -190,7 +145,10 @@ export default function MessagesPage() {
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-accent text-white text-sm font-semibold">
                         {thread.partner.name.charAt(0).toUpperCase()}
                       </div>
-                      <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background bg-green-400"></div>
+                      <div className={cn(
+                        "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background",
+                        isOnline(String(thread.partner.id)) ? "bg-emerald-400" : "bg-gray-400"
+                      )}></div>
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between">
@@ -231,19 +189,28 @@ export default function MessagesPage() {
                 >
                   <ChevronLeftIcon className="size-5 text-foreground" />
                 </button>
-                <div className="flex items-center gap-3 flex-1">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-accent text-white text-sm font-semibold">
-                    {activeThread.partner.name.charAt(0).toUpperCase()}
+                <Link href={`/users/${activeThread.partner.id}`} className="flex items-center gap-3 flex-1 hover:opacity-80 transition-opacity">
+                  <div className="relative">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-accent text-white text-sm font-semibold">
+                      {activeThread.partner.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className={cn(
+                      "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background",
+                      isOnline(String(activeThread.partner.id)) ? "bg-emerald-400" : "bg-gray-400"
+                    )}></div>
                   </div>
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-foreground">{activeThread.partner.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {isOnline(String(activeThread.partner.id)) ? "Online" : "Offline"}
+                    </p>
                   </div>
-                </div>
+                </Link>
                 <StatusChip status={activeThread.status} />
               </div>
             </header>
             <div className="flex-1 flex min-h-0 h-full bg-gradient-to-b from-background/50 to-background">
-              <InlineTaskChat taskId={activeThread.id} partnerName={activeThread.partner.name} />
+              <InlineTaskChat taskId={String(activeThread.id)} partnerName={activeThread.partner.name} partnerId={String(activeThread.partner.id)} />
             </div>
           </>
         ) : (

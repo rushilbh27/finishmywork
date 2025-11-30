@@ -1,4 +1,5 @@
 import './globals.css'
+import '@uploadthing/react/styles.css'
 import { Providers } from './providers'
 import { CursorGlow } from '@/components/CursorGlow'
 import { Toaster } from '@/components/ui/toaster'

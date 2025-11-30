@@ -13,8 +13,6 @@ export default function Footer() {
           <Link href="/tasks" className="hover:text-text-light dark:hover:text-text-dark transition-colors">Browse Tasks</Link>
           <Link href="/about" className="hover:text-text-light dark:hover:text-text-dark transition-colors">About</Link>
           <Link href="/help" className="hover:text-text-light dark:hover:text-text-dark transition-colors">Help</Link>
-          <Link href="/privacy" className="hover:text-text-light dark:hover:text-text-dark transition-colors">Privacy</Link>
-          <Link href="/terms" className="hover:text-text-light dark:hover:text-text-dark transition-colors">Terms</Link>
         </div>
       </div>
     </footer>

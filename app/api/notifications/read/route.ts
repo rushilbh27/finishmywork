@@ -10,7 +10,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = parseInt(String(session.user.id), 10)
+    const userId = String(session.user.id)
     
     // Mark all unread notifications as read
     const result = await prisma.notification.updateMany({

@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     }
 
   // Generate secure token (magic link)
-  const token = createToken(32)
+  const token = createToken()
   const tokenHash = hashToken(token)
   const expiry = addMinutes(new Date(), 15) // 15 minutes expiry
 

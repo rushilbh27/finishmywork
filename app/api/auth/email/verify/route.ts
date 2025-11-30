@@ -28,12 +28,11 @@ export async function POST(req: Request) {
 
     await prisma.user.update({
       where: { id: user.id },
-      // @ts-ignore - fields exist in runtime schema
       data: {
         emailVerified: new Date(),
         verificationToken: null,
         verificationTokenExpiry: null,
-      } as any,
+      },
     })
 
     // Return ok:true for frontend to auto-login and redirect
@@ -68,8 +67,7 @@ export async function GET(req: NextRequest) {
       }
       await prisma.user.update({
         where: { id: user.id },
-        // @ts-ignore
-        data: { emailVerified: new Date(), verificationToken: null, verificationTokenExpiry: null } as any,
+        data: { emailVerified: new Date(), verificationToken: null, verificationTokenExpiry: null },
       })
     }
 

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { io, Socket } from 'socket.io-client'
 import { PlusIcon, MapPinIcon, FilterIcon, RotateCcwIcon } from 'lucide-react'
 
 import { Input } from '@/components/ui/input'
@@ -13,6 +12,7 @@ import TaskCard from '@/components/tasks/TaskCard'
 import { useToast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
 import { calculateDistance } from '@/lib/geolocation'
+import { useRealtime } from '@/hooks/useRealtime'
 import {
   Select,
   SelectContent,
@@ -64,6 +64,7 @@ interface Task {
 export default function TasksPage() {
   const { data: session } = useSession()
   const { toast } = useToast()
+  const { connected, on } = useRealtime()
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -76,7 +77,6 @@ export default function TasksPage() {
   const [userCoords, setUserCoords] = useState<{ lat: number; lon: number } | null>(null)
   const [showAllLocations, setShowAllLocations] = useState(true)
   const [radiusKm, setRadiusKm] = useState(4)
-  const socketRef = useRef<Socket | null>(null)
   const didLoadFiltersRef = useRef(false)
   
   useEffect(() => {
@@ -138,35 +138,36 @@ export default function TasksPage() {
     maxBudget !== '' || 
     !showAllLocations
 
+  // Listen for new tasks via SSE
   useEffect(() => {
-    const baseUrl =
-      process.env.NEXT_PUBLIC_API_URL ||
-      (typeof window !== 'undefined' ? window.location.origin : undefined)
-
-    if (!baseUrl || socketRef.current) return
-
-    const socket = io(baseUrl, {
-      path: '/api/socketio',
-      transports: ['websocket'],
-    })
-    socketRef.current = socket
-
-    socket.on('connect', () => {
-      console.log('📡 connected to live tasks feed')
-    })
-
-    socket.on('task:created', (payload: { task?: Task }) => {
-      const task = payload?.task
+    const unsubscribe = on('task:created', (event) => {
+      if (event.type !== 'task:created') return
+      const task = event.data.task as Task
       if (!task) return
+      
       setTasks((prev) => {
         const filtered = prev.filter((existing) => existing.id !== task.id)
         return [task, ...filtered]
       })
+      
+      // Show toast notification for new tasks
+      toast({
+        title: '🆕 New Task Available!',
+        description: `${task.title} - ₹${task.budget}`,
+        duration: 4000,
+      })
     })
 
-    socket.on('task:updated', (payload: { task?: Task }) => {
-      const task = payload?.task
+    return unsubscribe
+  }, [on, toast])
+
+  // Listen for task updates via SSE
+  useEffect(() => {
+    const unsubscribe = on('task:updated', (event) => {
+      if (event.type !== 'task:updated') return
+      const task = event.data.task as Task
       if (!task) return
+      
       setTasks((prev) => {
         const exists = prev.some((existing) => existing.id === task.id)
         if (!exists) return [task, ...prev]
@@ -174,21 +175,8 @@ export default function TasksPage() {
       })
     })
 
-    socket.on('task:deleted', (payload: { taskId?: number | string }) => {
-      const taskId = payload?.taskId
-      if (taskId == null) return
-      const numericId = typeof taskId === 'string' ? Number.parseInt(taskId, 10) : taskId
-      setTasks((prev) => prev.filter((task) => task.id !== numericId))
-    })
-
-    return () => {
-      socket.off('task:created')
-      socket.off('task:updated')
-      socket.off('task:deleted')
-      socket.disconnect()
-      socketRef.current = null
-    }
-  }, [])
+    return unsubscribe
+  }, [on])
 
   const fetchUserLocation = async () => {
     if (!session?.user?.id) return
@@ -339,10 +327,10 @@ export default function TasksPage() {
   return (
     <div className="min-h-[calc(100vh-5rem)]">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 pb-16 pt-2">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-semibold text-foreground">Tasks</h1>
-            <p className="text-sm text-muted-foreground">
+        <div className="flex flex-col-reverse gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-2 text-left">
+            <h1 className="text-2xl md:text-3xl font-semibold text-foreground text-left">Tasks</h1>
+            <p className="text-xs md:text-sm text-muted-foreground text-left">
               Browse active study requests and lend a hand in real time.
             </p>
           </div>
@@ -359,11 +347,11 @@ export default function TasksPage() {
 
         <div
           className={cn(
-            'sticky top-28 z-10 flex items-center gap-3 rounded-2xl border border-border/40 bg-gradient-to-br from-background/95 via-background/90 to-background/85 px-5 py-3 backdrop-blur-3xl shadow-[0_8px_32px_-12px_rgba(129,140,248,0.12)]',
+            'sticky top-20 md:top-28 z-10 flex flex-wrap items-center gap-2 md:gap-3 rounded-2xl border border-border/40 bg-gradient-to-br from-background/95 via-background/90 to-background/85 px-3 md:px-5 py-2.5 md:py-3 backdrop-blur-3xl shadow-[0_8px_32px_-12px_rgba(129,140,248,0.12)]',
           )}
         >
           {/* Search */}
-          <div className="relative flex-1">
+          <div className="relative flex-1 min-w-[220px]">
             <Input
               placeholder="Search by title, subject, or keywords…"
               value={searchTerm}
@@ -379,7 +367,7 @@ export default function TasksPage() {
           <div className="flex items-center gap-2">
             <span className="hidden text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 sm:inline">Sort</span>
             <Select value={sortOption} onValueChange={(v) => setSortOption(v as typeof sortOption)}>
-              <SelectTrigger className="h-10 w-[160px] rounded-xl border-border/50 bg-surface/90 text-sm shadow-inner backdrop-blur-sm transition-all hover:bg-surface">
+              <SelectTrigger className="h-10 w-[140px] md:w-[160px] rounded-xl border-border/50 bg-surface/90 text-sm shadow-inner backdrop-blur-sm transition-all hover:bg-surface">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
@@ -418,7 +406,7 @@ export default function TasksPage() {
             </PopoverTrigger>
             <PopoverContent 
               align="end" 
-              className="w-[340px] rounded-2xl border border-border/60 bg-card/95 p-5 shadow-2xl backdrop-blur-3xl"
+              className="w-[92vw] max-w-[340px] rounded-2xl border border-border/60 bg-card/95 p-5 shadow-2xl backdrop-blur-3xl"
             >
               <div className="space-y-5">
                 <div className="flex items-center justify-between">

@@ -8,7 +8,7 @@ datasource db {
 }
 
 model User {
-  id                      Int            @id @default(autoincrement())
+  id                      String         @id @default(cuid())
   email                   String         @unique
   name                    String
   avatar                  String?
@@ -31,6 +31,10 @@ model User {
   verificationTokenExpiry DateTime?
   totpSecret              String?
   twoFactorEnabled        Boolean        @default(false)
+  isSaaSAdmin             Boolean        @default(false)
+  isSuspended             Boolean        @default(false)
+  suspendedAt             DateTime?
+  suspensionReason        String?
   receivedMessages        Message[]      @relation("MessageReceiver")
   sentMessages            Message[]      @relation("MessageSender")
   notifications           Notification[]
@@ -39,6 +43,12 @@ model User {
   reviews                 Review[]       @relation("Reviewer")
   acceptedTasks           Task[]         @relation("TaskAccepter")
   postedTasks             Task[]         @relation("TaskPoster")
+  accounts                Account[]
+  sessions                Session[]
+  blockedUsers            BlockedUser[]  @relation("BlockerUser")
+  blockedByUsers          BlockedUser[]  @relation("BlockedUser")
+  reportsCreated          Report[]       @relation("ReportCreator")
+  reportsReceived         Report[]       @relation("ReportedUser")
 
   @@index([location])
   @@index([rating])
@@ -48,7 +58,7 @@ model User {
 }
 
 model Task {
-  id            Int           @id @default(autoincrement())
+  id            String        @id @default(cuid())
   title         String
   description   String
   subject       String
@@ -56,13 +66,14 @@ model Task {
   budget        Decimal       @db.Decimal(10, 2)
   status        TaskStatus    @default(OPEN)
   paymentStatus PaymentStatus @default(PENDING)
+  mediaUrls     String[]      @default([])
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   location      String
   latitude      Float?
   longitude     Float?
-  posterId      Int
-  accepterId    Int?
+  posterId      String
+  accepterId    String?
   messages      Message[]
   payments      Payment[]
   reviews       Review[]
@@ -81,13 +92,13 @@ model Task {
 }
 
 model Review {
-  id         Int      @id @default(autoincrement())
+  id         String   @id @default(cuid())
   rating     Int
   comment    String?
   createdAt  DateTime @default(now())
-  taskId     Int
-  reviewerId Int
-  receiverId Int
+  taskId     String
+  reviewerId String
+  receiverId String
   receiver   User     @relation("ReviewReceiver", fields: [receiverId], references: [id])
   reviewer   User     @relation("Reviewer", fields: [reviewerId], references: [id])
   task       Task     @relation(fields: [taskId], references: [id])
@@ -100,12 +111,14 @@ model Review {
 }
 
 model Message {
-  id         Int      @id @default(autoincrement())
+  id         String   @id @default(cuid())
   content    String
+  type       String   @default("text")
+  mediaUrl   String?
   createdAt  DateTime @default(now())
-  taskId     Int
-  senderId   Int
-  receiverId Int
+  taskId     String
+  senderId   String
+  receiverId String
   receiver   User     @relation("MessageReceiver", fields: [receiverId], references: [id])
   sender     User     @relation("MessageSender", fields: [senderId], references: [id])
   task       Task     @relation(fields: [taskId], references: [id])
@@ -118,14 +131,14 @@ model Message {
 }
 
 model Payment {
-  id              Int           @id @default(autoincrement())
+  id              String        @id @default(cuid())
   amount          Decimal       @db.Decimal(10, 2)
   status          PaymentStatus @default(PENDING)
   stripePaymentId String?       @unique
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
-  taskId          Int
-  userId          Int
+  taskId          String
+  userId          String
   task            Task          @relation(fields: [taskId], references: [id])
   user            User          @relation("PaymentUser", fields: [userId], references: [id])
 
@@ -137,17 +150,9 @@ model Payment {
   @@map("payments")
 }
 
-model PasswordResetToken {
-  id        Int      @id @default(autoincrement())
-  email     String
-  tokenHash String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-}
-
 model Notification {
-  id        Int       @id @default(autoincrement())
-  userId    Int
+  id        String    @id @default(cuid())
+  userId    String
   type      String
   title     String
   body      String?
@@ -161,13 +166,87 @@ model Notification {
 }
 
 model Waitlist {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  phone     String?
-  city      String
-  college   String?
+  id       String   @id @default(cuid())
+  email    String   @unique
+  phone    String?  // Optional in DB but required by API validation
+  name     String?
+  city     String?
+  college  String?
+  joinedAt DateTime @default(now())
+  status   String   @default("pending")
+
+  @@map("waitlist")
+}
+
+/**
+ * --- Add these models for NextAuth ---
+ */
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BlockedUser {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  reason    String?
   createdAt DateTime @default(now())
-  @@map("Waitlist")
+  blocker   User     @relation("BlockerUser", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("BlockedUser", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
+  @@map("blocked_users")
+}
+
+model Report {
+  id         String       @id @default(cuid())
+  reporterId String
+  reportedId String?
+  taskId     String?
+  type       ReportType
+  category   String
+  reason     String
+  status     ReportStatus @default(PENDING)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  reviewedBy String?
+  reviewedAt DateTime?
+  action     String?
+  notes      String?
+  reporter   User         @relation("ReportCreator", fields: [reporterId], references: [id])
+  reported   User?        @relation("ReportedUser", fields: [reportedId], references: [id])
+
+  @@index([status])
+  @@index([type])
+  @@index([reporterId])
+  @@index([reportedId])
+  @@index([taskId])
+  @@index([createdAt])
+  @@map("reports")
 }
 
 enum UserRole {
@@ -187,4 +266,16 @@ enum PaymentStatus {
   COMPLETED
   FAILED
   REFUNDED
+}
+
+enum ReportType {
+  USER
+  TASK
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWING
+  RESOLVED
+  DISMISSED
 }

@@ -1,15 +1,24 @@
 import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
-import { PrismaAdapter } from '@next-auth/prisma-adapter'
+import GoogleProvider from 'next-auth/providers/google'
+import { PrismaAdapter } from '@auth/prisma-adapter' // ✅ use the @auth version (not @next-auth)
 import { prisma } from './prisma'
 import bcrypt from 'bcryptjs'
 
 export const authOptions: NextAuthOptions = {
+  // ✅ Adapter needed for Google (so users/accounts are stored in DB)
   adapter: PrismaAdapter(prisma),
 
   providers: [
+    // 🟣 Google OAuth — new addition
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+
+    // 🟡 Credentials (your existing one)
     CredentialsProvider({
-      name: 'credentials',
+      name: 'Credentials',
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
@@ -17,14 +26,12 @@ export const authOptions: NextAuthOptions = {
 
       async authorize(credentials) {
         console.log('✅ Auth - Prisma client initialized:', !!prisma)
-        console.log('✅ Auth - Prisma.user exists:', !!prisma.user)
 
         if (!credentials?.email || !credentials?.password) {
           console.warn('❌ Missing credentials')
           return null
         }
 
-        // ✅ FIXED: use prisma.user (singular)
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
         })
@@ -34,9 +41,6 @@ export const authOptions: NextAuthOptions = {
           return null
         }
 
-        // Credentials validation continues; emailVerified will be enforced in callbacks.signIn
-
-        // Validate password
         const isPasswordValid = await bcrypt.compare(
           credentials.password,
           user.password ?? ''
@@ -49,7 +53,6 @@ export const authOptions: NextAuthOptions = {
 
         console.log('✅ Authenticated:', user.email)
 
-        // Don’t include password in session
         return {
           id: user.id,
           email: user.email,
@@ -61,6 +64,8 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
 
+  // ✅ Use DB sessions for Google, but JWT also works — choose one:
+  // If you want speed and no DB load, keep "jwt".
   session: {
     strategy: 'jwt',
   },
@@ -70,33 +75,39 @@ export const authOptions: NextAuthOptions = {
   },
 
   callbacks: {
-    async signIn({ user, account, credentials }) {
-      // Only enforce for credentials logins
+    async signIn({ user, account }) {
+      // ✅ Only block credentials users if not verified
       if (account?.provider === 'credentials') {
-        const dbUser = await prisma.user.findUnique({ where: { email: user.email! } })
+        const dbUser = await prisma.user.findUnique({
+          where: { email: user.email! },
+        })
         if (!dbUser?.emailVerified) {
-          // Block sign-in until verified
-          // NextAuth can't redirect from here in API, but we can signal an error
           throw new Error('EMAIL_NOT_VERIFIED')
         }
       }
+
+      // ✅ If Google user logs in first time, ensure they're inserted in DB (adapter handles this)
       return true
     },
-    async jwt({ token, user }) {
+
+    async jwt({ token, user, account }) {
+      // ✅ Add Google user role + avatar
       if (user) {
-        token.role = user.role
-        token.avatar = user.avatar
+        token.role = (user as any).role || 'STUDENT'
+        token.avatar = (user as any).avatar || null
       }
       return token
     },
 
     async session({ session, token }) {
-      if (token) {
+      if (token && session.user) {
         session.user.id = token.sub!
         session.user.role = token.role as string
-        session.user.avatar = token.avatar as string
+        session.user.avatar = token.avatar as string | null
       }
       return session
     },
   },
+
+  secret: process.env.NEXTAUTH_SECRET,
 }

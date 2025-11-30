@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { XIcon, ImageIcon, PaperclipIcon } from 'lucide-react'
 
 import {
   Dialog,
@@ -21,6 +22,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
+import { UploadButton } from '@/components/uploadthing'
 
 const schema = z.object({
   title: z.string().trim().min(3, 'Title must be at least 3 characters'),
@@ -55,10 +57,13 @@ interface PostTaskDialogProps {
 
 export function PostTaskDialog({ trigger, children, onCreated }: PostTaskDialogProps) {
   const [open, setOpen] = React.useState(false)
+  const [mediaFiles, setMediaFiles] = React.useState<string[]>([])
   const { data: session } = useSession()
   const router = useRouter()
   const { toast } = useToast()
 
+  const [uploading, setUploading] = React.useState(false)
+  const [uploadProgress, setUploadProgress] = React.useState(0)
   const {
     register,
     handleSubmit,
@@ -67,19 +72,20 @@ export function PostTaskDialog({ trigger, children, onCreated }: PostTaskDialogP
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     mode: 'onChange', // Validate on change to give immediate feedback
-      defaultValues: {
+    defaultValues: {
       title: '',
       subject: SUBJECTS[0],
       description: '',
       deadlineDate: '',
       deadlineTime: '',
-        budget: 0,
+      budget: 0,
       location: '',
     },
   })
 
   const handleClose = React.useCallback(() => {
     setOpen(false)
+    setMediaFiles([])
     reset()
   }, [reset])
 
@@ -105,6 +111,7 @@ export function PostTaskDialog({ trigger, children, onCreated }: PostTaskDialogP
         budget: values.budget, // This is now already a number from the schema transform
         posterId: session.user.id,
         location: values.location.trim(),
+        mediaUrls: mediaFiles,
       }
 
       console.log('Submitting task payload:', payload) // Debug log
@@ -216,6 +223,98 @@ export function PostTaskDialog({ trigger, children, onCreated }: PostTaskDialogP
                 />
               </Field>
 
+              {/* Media Upload */}
+              <Field label="Attach images or documents (optional)" error={undefined}>
+                <div className="space-y-3">
+                  <div className="flex flex-col items-center gap-2">
+                    <UploadButton
+                      endpoint="taskMedia"
+                      onUploadBegin={() => {
+                        setUploading(true)
+                        setUploadProgress(0)
+                      }}
+                      onUploadProgress={(progress) => {
+                        setUploadProgress(progress)
+                      }}
+                      onClientUploadComplete={(res) => {
+                        setUploading(false)
+                        setUploadProgress(100)
+                        if (res) {
+                          const urls = res.map((f) => f.url)
+                          setMediaFiles((prev) => [...prev, ...urls])
+                          toast({
+                            title: 'Upload complete!',
+                            description: `${res.length} file(s) uploaded successfully.`,
+                          })
+                        }
+                      }}
+                      onUploadError={(error: Error) => {
+                        setUploading(false)
+                        setUploadProgress(0)
+                        toast({
+                          title: 'Upload failed',
+                          description: error.message,
+                          variant: 'destructive',
+                        })
+                      }}
+                      appearance={{
+                        button: "bg-neutral-200 text-neutral-800 px-4 py-2 rounded-xl text-sm font-medium hover:bg-neutral-300 transition-all",
+                        container: "flex flex-col items-center gap-2 w-full",
+                        allowedContent: "text-xs text-muted-foreground mt-1"
+                      }}
+                      content={{
+                        button({ ready }) {
+                          if (uploading) return (
+                            <div className="flex items-center gap-2">
+                              <PaperclipIcon className="h-4 w-4 animate-pulse" />
+                              Uploading...
+                            </div>
+                          )
+                          return (
+                            <div className="flex items-center gap-2">
+                              <PaperclipIcon className="h-4 w-4" />
+                              Upload Files
+                            </div>
+                          )
+                        },
+                        allowedContent({ ready, fileTypes }) {
+                          if (!ready) return null
+                          return `Images (4MB) or PDFs (8MB)`
+                        }
+                      }}
+                    />
+                    {uploading && (
+                      <div className="w-full mt-2">
+                        <div className="h-1 w-full bg-neutral-200 rounded-full overflow-hidden">
+                          <div className="h-1 bg-gradient-to-r from-purple-500 to-indigo-500 transition-all" style={{ width: `${uploadProgress}%` }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {/* Preview uploaded files */}
+                  {mediaFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {mediaFiles.map((url, idx) => (
+                        <div key={url} className="group relative">
+                          <img
+                            src={url}
+                            alt={`Upload ${idx + 1}`}
+                            className="h-20 w-20 rounded-lg border border-border/50 object-cover shadow-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setMediaFiles((prev) => prev.filter((u) => u !== url))}
+                            className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+                          >
+                            <XIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Field>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Deadline date" error={errors.deadlineDate?.message}>
                   <Input 
@@ -269,11 +368,11 @@ export function PostTaskDialog({ trigger, children, onCreated }: PostTaskDialogP
               </Button>
               <Button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || uploading}
                 variant="gradient"
                 className="rounded-xl px-6"
               >
-                {isSubmitting ? 'Posting…' : 'Post task'}
+                {uploading ? 'Uploading...' : isSubmitting ? 'Posting…' : 'Post task'}
               </Button>
             </div>
           </form>

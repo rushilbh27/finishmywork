@@ -32,7 +32,6 @@ export async function POST(req: Request) {
     const otpHash = hashOTP(otp)
     const expiresAt = addMinutes(new Date(), 10) // 10 minutes expiry
 
-    // @ts-ignore - model exists in runtime schema
     await (prisma as any).passwordResetToken.create({
       data: { email, tokenHash: otpHash, expiresAt },
     })

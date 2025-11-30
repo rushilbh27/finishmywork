@@ -97,13 +97,13 @@ export function Hero() {
           variants={prefersReducedMotion ? undefined : fastStagger}
         >
           <motion.h1
-            className="text-pretty text-4xl sm:text-5xl md:text-6xl font-semibold leading-tight tracking-tight"
+            className="text-pretty text-5xl sm:text-6xl md:text-7xl font-semibold leading-tight tracking-tight"
             variants={prefersReducedMotion ? undefined : fadeUp}
           >
             <span className="gradient-text">Connect. Learn. Earn.</span>
           </motion.h1>
           <motion.p
-            className="max-w-2xl text-balance text-sm md:text-base text-muted-foreground"
+            className="max-w-2xl text-balance text-base md:text-lg text-muted-foreground"
             variants={prefersReducedMotion ? undefined : fadeUp}
           >
             Exchange skills, complete tasks, and grow together — all in one place.

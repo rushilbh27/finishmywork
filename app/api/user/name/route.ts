@@ -23,7 +23,7 @@ export async function PATCH(request: NextRequest) {
     // const existingUser = await prisma.user.findFirst({
     //   where: { 
     //     name: { equals: name, mode: 'insensitive' },
-    //     id: { not: parseInt(session.user.id as string) }
+    //     id: { not: session.user.id }
     //   },
     // })
     
@@ -32,7 +32,7 @@ export async function PATCH(request: NextRequest) {
     // }
 
     const updatedUser = await prisma.user.update({
-      where: { id: parseInt(session.user.id as string) },
+      where: { id: session.user.id as string },
       data: { name },
       select: {
         id: true,

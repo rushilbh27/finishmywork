@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = parseInt(String(session.user.id), 10)
+    const userId = String(session.user.id)
 
     // Create sample notifications for testing
     const notifications = await Promise.all([

@@ -11,7 +11,7 @@ export async function GET() {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = parseInt(String(session.user.id), 10)
+    const userId = String(session.user.id)
 
     const tasks = await prisma.task.findMany({
       where: { 

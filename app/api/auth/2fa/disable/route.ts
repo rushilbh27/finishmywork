@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   if (!session?.user?.id) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
 
   await prisma.user.update({
-    where: { id: parseInt(String(session.user.id)) },
+    where: { id: String(session.user.id) },
     data: {
       twoFactorEnabled: false,
       totpSecret: null,

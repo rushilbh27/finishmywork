@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { ensureSocketIO, emitTaskUpdated } from '@/lib/socketServer'
+import { broadcastTaskUpdate } from '@/lib/realtime'
 import { notifyTaskAccepted } from '@/lib/notifications'
 
 export async function PATCH(
@@ -17,23 +17,10 @@ export async function PATCH(
     }
 
     // Use authenticated user's id as the accepter instead of trusting client input
-    const taskId = parseInt(params.id, 10)
-    const accepterIdRaw = session.user.id
-    const accepterId = typeof accepterIdRaw === 'string' ? parseInt(accepterIdRaw, 10) : accepterIdRaw
-    
-    if (isNaN(taskId)) {
-      return NextResponse.json(
-        { message: 'Invalid task ID' },
-        { status: 400 }
-      )
-    }
-
-    if (!Number.isInteger(accepterId)) {
-      return NextResponse.json({ message: 'Invalid accepter ID' }, { status: 400 })
-    }
+    const taskId = params.id
+    const accepterId = String(session.user.id)
 
     // Email verification guard
-    // Email verification guard (schema fields exist at runtime)
     const dbUser = (await prisma.user.findUnique({
       where: { id: accepterId },
     })) as any
@@ -60,7 +47,7 @@ export async function PATCH(
       )
     }
 
-    if (task.posterId === accepterId) {
+    if (task.posterId?.toString() === accepterId) {
       return NextResponse.json(
         { message: 'You cannot accept your own task' },
         { status: 400 }
@@ -98,8 +85,7 @@ export async function PATCH(
 
     // Emit real-time update and notifications
     try {
-      ensureSocketIO()
-      emitTaskUpdated(updatedTask)
+      broadcastTaskUpdate('accepted', updatedTask.id, updatedTask)
       
       // Notify task owner that their task was accepted
       await notifyTaskAccepted(task.posterId, task.title, taskId)

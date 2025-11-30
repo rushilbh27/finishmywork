@@ -1,15 +1,21 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-const BASE_COUNT = 113; // 👈 your default visible start
+const BASE_COUNT = 113; // starting number
 
 export async function GET() {
-  try {
-    const actual = await prisma.waitlist.count();
-    const count = BASE_COUNT + actual;
-    return NextResponse.json({ count });
-  } catch (error) {
-    console.error("❌ Error fetching waitlist count:", error);
-    return NextResponse.json({ count: BASE_COUNT }, { status: 500 });
-  }
+  const count = await prisma.waitlist.count();
+  const total = BASE_COUNT + count;
+
+  return NextResponse.json(
+    { count: total },
+    {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      },
+    }
+  );
 }

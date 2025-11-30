@@ -13,13 +13,8 @@ export async function POST(request: NextRequest) {
     }
 
     const { taskId: taskIdRaw, amount } = await request.json()
-    const taskId = typeof taskIdRaw === 'string' ? parseInt(taskIdRaw, 10) : taskIdRaw
-    const userIdRaw = session.user.id
-    const userId = typeof userIdRaw === 'string' ? parseInt(userIdRaw, 10) : userIdRaw
-
-    if (!Number.isInteger(taskId) || !Number.isInteger(userId)) {
-      return NextResponse.json({ message: 'Invalid IDs' }, { status: 400 })
-    }
+    const taskId = String(taskIdRaw)
+    const userId = String(session.user.id)
 
     // Verify task exists and user is the poster
     const task = await prisma.task.findFirst({

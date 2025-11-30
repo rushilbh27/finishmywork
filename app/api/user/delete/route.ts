@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { Server as ServerIO } from 'socket.io'
 
 declare global {
+  // eslint-disable-next-line no-var
   var io: ServerIO | undefined
 }
 
@@ -33,13 +34,8 @@ export async function DELETE(request: NextRequest) {
     const { password, forceDelete } = deleteAccountSchema.parse(body)
     console.log('Password validation passed')
 
-    const userId = parseInt(session.user.id as string)
+    const userId = String(session.user.id)
     console.log('User ID:', userId)
-
-    if (isNaN(userId)) {
-      console.error('Invalid user ID:', session.user.id)
-      return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 })
-    }
 
     // Get user with password
     const user = await prisma.user.findUnique({

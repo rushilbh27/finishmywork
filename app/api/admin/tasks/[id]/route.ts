@@ -14,12 +14,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const taskId = parseInt(params.id)
+    const taskId = params.id
     
-    if (isNaN(taskId)) {
-      return NextResponse.json({ error: 'Invalid task ID' }, { status: 400 })
-    }
-
     // Delete task and related data
     await prisma.$transaction(async (tx) => {
       // Delete related records first

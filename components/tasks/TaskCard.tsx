@@ -1,6 +1,7 @@
 "use client"
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { formatDistanceToNow } from 'date-fns'
 import { useSession } from 'next-auth/react'
 import {
@@ -18,6 +19,7 @@ import { StatusChip } from '@/components/ui/status-chip'
 import { useToast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import { isImage, fileIcon } from '@/lib/fileIcons'
 
 interface TaskCardProps {
   task: {
@@ -29,6 +31,7 @@ interface TaskCardProps {
     budget: number | string
     status: string
     location?: string
+    mediaUrls?: string[]
     poster?: {
       name?: string
       university?: string
@@ -54,9 +57,9 @@ export default function TaskCard({ task, onTaskUpdate }: TaskCardProps) {
       ? formatDistanceToNow(createdAt, { addSuffix: true })
       : 'just now'
 
-  const userId = session?.user?.id ? Number.parseInt(String(session.user.id), 10) : null
-  const isOwner = userId != null && task.posterId === userId
-  const isAccepter = userId != null && task.accepterId === userId
+  const userId = session?.user?.id ? String(session.user.id) : null
+  const isOwner = userId != null && task.posterId?.toString() === userId
+  const isAccepter = userId != null && task.accepterId?.toString() === userId
   // CORE UX FIX 1: Account for optimistic acceptance state
   const canAccept = !isOwner && !isAccepter && task.status === 'OPEN' && !task.accepterId
   const canEdit = isOwner && task.status === 'OPEN'
@@ -92,8 +95,8 @@ export default function TaskCard({ task, onTaskUpdate }: TaskCardProps) {
         }
         // Success toasts by action
         if (action === 'unassign') {
-          const userId = session?.user?.id ? Number.parseInt(String(session.user.id), 10) : null
-          const isAccepterLocal = userId != null && task.accepterId === userId
+          const userId = session?.user?.id ? String(session.user.id) : null
+          const isAccepterLocal = userId != null && task.accepterId?.toString() === userId
           toast({
             title: isAccepterLocal ? 'Withdrawn from task' : 'Task was unassigned by poster',
             description: isAccepterLocal
@@ -156,6 +159,47 @@ export default function TaskCard({ task, onTaskUpdate }: TaskCardProps) {
         <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground">
           {task.description || 'No description provided.'}
         </p>
+        
+        {/* Media preview */}
+        {task.mediaUrls && task.mediaUrls.length > 0 && (
+          <div className="flex gap-2 mt-2 overflow-x-auto">
+            {task.mediaUrls.slice(0, 3).map((url, idx) => (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.2, delay: idx * 0.05 }}
+                className="cursor-pointer"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  window.open(url, '_blank')
+                }}
+              >
+                {isImage(url) ? (
+                  <Image
+                    src={url}
+                    alt={`Attachment ${idx + 1}`}
+                    width={64}
+                    height={64}
+                    className="h-16 w-16 rounded-lg border border-border/50 object-cover shadow-sm hover:opacity-90 transition-opacity"
+                    placeholder="blur"
+                    blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8X8DwHwAFAAJ/l9t6AAAAAElFTkSuQmCC"
+                  />
+                ) : (
+                  <div className="h-16 w-16 rounded-lg border border-border/50 bg-surface/60 flex items-center justify-center text-2xl hover:opacity-90 transition-opacity">
+                    {fileIcon(url)}
+                  </div>
+                )}
+              </motion.div>
+            ))}
+            {task.mediaUrls.length > 3 && (
+              <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-border/50 bg-surface/60 text-xs text-muted-foreground">
+                +{task.mediaUrls.length - 3}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="mt-4 space-y-3 text-sm text-muted-foreground">

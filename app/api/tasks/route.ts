@@ -2,13 +2,43 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { ensureSocketIO, emitTaskCreated } from '@/lib/socketServer'
-import { Prisma } from '@prisma/client' // ✅ FIXED: Added this import
+import { broadcastTaskUpdate } from '@/lib/realtime'
+import { Prisma } from '@prisma/client'
 
 export async function GET() {
   try {
+    const session = await getServerSession(authOptions)
+    const userId = session?.user?.id ? String(session.user.id) : null
+
+    // Get blocked user IDs if user is logged in
+    let blockedUserIds: string[] = []
+    if (userId) {
+      const blockedRelations = await prisma.blockedUser.findMany({
+        where: {
+          OR: [
+            { blockerId: userId },
+            { blockedId: userId },
+          ],
+        },
+        select: {
+          blockerId: true,
+          blockedId: true,
+        },
+      })
+      
+      blockedUserIds = blockedRelations.map(rel => 
+        rel.blockerId === userId ? rel.blockedId : rel.blockerId
+      )
+    }
+
     const tasks = await prisma.task.findMany({
-      where: { status: 'OPEN' },
+      where: { 
+        status: 'OPEN',
+        // Hide tasks from blocked users
+        ...(blockedUserIds.length > 0 && {
+          posterId: { notIn: blockedUserIds },
+        }),
+      },
       include: {
         poster: {
           select: { name: true, university: true },
@@ -32,15 +62,11 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { title, description, subject, deadline, budget, location: taskLocation } = body
+    const { title, description, subject, deadline, budget, location: taskLocation, mediaUrls } = body
     console.log('Task creation request:', body)
 
-    const posterId = parseInt(String(session.user.id), 10)
-    if (!Number.isInteger(posterId)) {
-      return NextResponse.json({ message: 'Invalid posterId' }, { status: 400 })
-    }
+    const posterId = String(session.user.id)
 
-    // Email verification guard
     // Email verification guard (schema fields exist at runtime)
     const dbUser = (await prisma.user.findUnique({
       where: { id: posterId },
@@ -80,6 +106,7 @@ export async function POST(request: Request) {
         location: taskLocation || poster.location || 'Not specified',
         latitude: poster.latitude,
         longitude: poster.longitude,
+        mediaUrls: mediaUrls || [],
       },
       include: {
         poster: {
@@ -89,10 +116,18 @@ export async function POST(request: Request) {
     })
 
     try {
-      ensureSocketIO()
-      emitTaskCreated(task)
+      broadcastTaskUpdate('created', task.id, task)
+
+      // Create notifications for nearby students (same college/location)
+      try {
+        const { notifyTaskCreated } = await import('@/lib/notifications')
+        // Fire-and-forget
+        notifyTaskCreated(task).catch((err: any) => console.error('notifyTaskCreated error:', err))
+      } catch (err) {
+        console.error('Failed to import notifyTaskCreated:', err)
+      }
     } catch (error) {
-      console.error('Socket emit error:', error)
+      console.error('Broadcast error:', error)
     }
 
     return NextResponse.json(task, { status: 201 })

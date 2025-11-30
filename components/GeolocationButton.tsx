@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { MapPinIcon } from '@heroicons/react/24/outline'
 import { getCurrentLocation } from '@/lib/geolocation'
-import toast from 'react-hot-toast'
+import { useToast } from '@/components/ui/use-toast'
 
 interface GeolocationButtonProps {
   onLocationUpdate: (latitude: number, longitude: number) => void
@@ -12,6 +12,7 @@ interface GeolocationButtonProps {
 
 export function GeolocationButton({ onLocationUpdate, disabled = false }: GeolocationButtonProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const { toast } = useToast()
 
   const handleGetLocation = async () => {
     setIsLoading(true)
@@ -19,7 +20,7 @@ export function GeolocationButton({ onLocationUpdate, disabled = false }: Geoloc
     try {
       const coordinates = await getCurrentLocation()
       onLocationUpdate(coordinates.latitude, coordinates.longitude)
-      toast.success('Location updated successfully!')
+      toast({ title: 'Location updated successfully!', variant: 'success' })
     } catch (error: any) {
       console.error('Geolocation error:', error)
       
@@ -32,7 +33,7 @@ export function GeolocationButton({ onLocationUpdate, disabled = false }: Geoloc
         errorMessage = 'Location request timed out. Please try again.'
       }
       
-      toast.error(errorMessage)
+      toast({ title: errorMessage, variant: 'destructive' })
     } finally {
       setIsLoading(false)
     }

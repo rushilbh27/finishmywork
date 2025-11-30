@@ -2,22 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { ensureSocketIO, emitTaskUpdated, emitTaskDeleted } from '@/lib/socketServer'
+import { broadcastTaskUpdate } from '@/lib/realtime'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const taskId = parseInt(params.id)
-    if (isNaN(taskId)) {
-      return NextResponse.json(
-        { message: 'Invalid task ID' },
-        { status: 400 }
-      )
-    }
+    const taskId = params.id
 
-    // @ts-ignore - Prisma client has 'tasks' model but TypeScript types are incorrect
     const task = await prisma.task.findUnique({
       where: { id: taskId }
     })
@@ -30,7 +23,6 @@ export async function GET(
     }
 
     // Fetch poster and accepter information separately
-    // @ts-ignore - Prisma client has 'users' model but TypeScript types are incorrect
     const poster = await prisma.user.findUnique({
       where: { id: task.posterId },
       select: {
@@ -44,7 +36,6 @@ export async function GET(
 
     let accepter = null
     if (task.accepterId) {
-      // @ts-ignore - Prisma client has 'users' model but TypeScript types are incorrect
       accepter = await prisma.user.findUnique({
         where: { id: task.accepterId },
         select: {
@@ -87,13 +78,7 @@ export async function PATCH(
       )
     }
 
-    const taskId = parseInt(params.id)
-    if (isNaN(taskId)) {
-      return NextResponse.json(
-        { message: 'Invalid task ID' },
-        { status: 400 }
-      )
-    }
+    const taskId = params.id
 
     // Check if task exists and user owns it
     const existingTask = await prisma.task.findUnique({
@@ -108,7 +93,7 @@ export async function PATCH(
       )
     }
 
-    if (existingTask.posterId !== parseInt(String(session.user.id))) {
+    if (existingTask.posterId !== String(session.user.id)) {
       return NextResponse.json(
         { message: 'Forbidden: You can only edit your own tasks' },
         { status: 403 }
@@ -171,8 +156,7 @@ export async function PATCH(
     })
 
     try {
-      ensureSocketIO()
-      emitTaskUpdated(updatedTask)
+      broadcastTaskUpdate('updated', updatedTask.id, updatedTask)
     } catch (error) {
       console.error('Error emitting task update:', error)
     }
@@ -200,13 +184,7 @@ export async function DELETE(
       )
     }
 
-    const taskId = parseInt(params.id)
-    if (isNaN(taskId)) {
-      return NextResponse.json(
-        { message: 'Invalid task ID' },
-        { status: 400 }
-      )
-    }
+    const taskId = params.id
 
     // Check if task exists and user owns it
     const existingTask = await prisma.task.findUnique({
@@ -221,7 +199,7 @@ export async function DELETE(
       )
     }
 
-    if (existingTask.posterId !== parseInt(String(session.user.id))) {
+    if (existingTask.posterId !== String(session.user.id)) {
       return NextResponse.json(
         { message: 'Forbidden: You can only delete your own tasks' },
         { status: 403 }
@@ -241,8 +219,7 @@ export async function DELETE(
     })
 
     try {
-      ensureSocketIO()
-      emitTaskDeleted(taskId)
+      broadcastTaskUpdate('cancelled', taskId, null)
     } catch (error) {
       console.error('Error emitting task delete update:', error)
     }

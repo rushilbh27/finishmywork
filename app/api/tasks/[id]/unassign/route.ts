@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import prisma from '@/lib/prisma'
-import { ensureSocketIO, emitTaskUpdated } from '@/lib/socketServer'
+import { prisma } from '@/lib/prisma'
+import { broadcastTaskUpdate } from '@/lib/realtime'
 import { notifyTaskUnassigned } from '@/lib/notifications'
 
 export async function PATCH(
@@ -15,15 +15,11 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const taskId = parseInt(params.id, 10)
-    if (isNaN(taskId)) {
-      return NextResponse.json({ error: 'Invalid task ID' }, { status: 400 })
-    }
+    const taskId = params.id
 
-    const userId = parseInt(String(session.user.id), 10)
+    const userId = String(session.user.id)
 
     // Email verification guard
-    // Email verification guard (schema fields exist at runtime)
     const dbUser = (await prisma.user.findUnique({
       where: { id: userId },
     })) as any
@@ -77,8 +73,7 @@ export async function PATCH(
     })
 
     try {
-      await ensureSocketIO()
-      emitTaskUpdated(updatedTask)
+      broadcastTaskUpdate('updated', updatedTask.id, updatedTask)
       
       // Notify task owner that their task was unassigned
       await notifyTaskUnassigned(task.posterId, task.title, taskId)

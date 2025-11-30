@@ -77,6 +77,11 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
       'Earlier': []
     }
 
+    // Safety check: ensure notifications is an array
+    if (!Array.isArray(notifications)) {
+      return []
+    }
+
     notifications.forEach(notification => {
       const date = new Date(notification.createdAt)
       if (isToday(date)) {
@@ -93,7 +98,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
     return Object.entries(groups).filter(([_, items]) => items.length > 0)
   }
 
-  const groupedNotifications = groupNotificationsByTime(notifications)
+  const groupedNotifications = groupNotificationsByTime(notifications || [])
 
   return (
     <AnimatePresence>
@@ -103,9 +108,12 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: -10 }}
         transition={{ duration: 0.15, ease: "easeOut" }}
-        className="absolute top-full right-0 mt-3 w-[420px] max-h-[600px] bg-black/60 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden"
         role="dialog"
         aria-labelledby="notifications-title"
+        className="z-[100] overflow-hidden
+        fixed inset-x-0 mx-auto top-20 w-[85vw] max-w-[340px] min-h-[280px] max-h-[580px]
+        bg-black/80 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl
+        md:absolute md:top-full md:right-0 md:left-auto md:inset-x-auto md:mx-0 md:mt-3 md:w-[420px] md:min-h-0 md:h-auto md:max-h-[600px] md:bg-black/60"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/10 bg-white/5">
@@ -125,7 +133,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
             <div className="flex items-center justify-center p-8">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/80"></div>
             </div>
-          ) : notifications.length === 0 ? (
+          ) : !Array.isArray(notifications) || notifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-8 text-center">
               <Bell className="h-8 w-8 text-white/60 mb-2" />
               <p className="text-sm text-white/90">No notifications yet</p>

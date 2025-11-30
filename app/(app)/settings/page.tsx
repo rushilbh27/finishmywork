@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import toast from 'react-hot-toast'
+import { useToast } from '@/components/ui/use-toast'
 import { 
   UserIcon,
   EnvelopeIcon,
@@ -15,7 +15,8 @@ import {
   BellIcon,
   TrashIcon,
   EyeIcon,
-  EyeSlashIcon
+  EyeSlashIcon,
+  NoSymbolIcon
 } from '@heroicons/react/24/outline'
 import AuthRequired from '@/components/auth/AuthRequired'
 import { Input } from '@/components/ui/input'
@@ -57,6 +58,7 @@ type PasswordForm = z.infer<typeof passwordSchema>
 export default function SettingsPage() {
   const { data: session, status, update } = useSession()
   const router = useRouter()
+  const { toast } = useToast()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
@@ -143,14 +145,14 @@ export default function SettingsPage() {
       })
 
       if (response.ok) {
-        toast.success('Profile updated successfully!')
+        toast({ title: 'Profile updated successfully!', variant: 'success' })
         await update() // Refresh session data
       } else {
         const error = await response.json()
-        toast.error(error.message || 'Failed to update profile')
+        toast({ title: error.message || 'Failed to update profile', variant: 'destructive' })
       }
     } catch (error) {
-      toast.error('Something went wrong')
+      toast({ title: 'Something went wrong', variant: 'destructive' })
     } finally {
       setIsLoading(false)
     }
@@ -171,14 +173,14 @@ export default function SettingsPage() {
       })
 
       if (response.ok) {
-        toast.success('Password updated successfully!')
+        toast({ title: 'Password updated successfully!', variant: 'success' })
         passwordForm.reset()
       } else {
         const error = await response.json()
-        toast.error(error.message || 'Failed to update password')
+        toast({ title: error.message || 'Failed to update password', variant: 'destructive' })
       }
     } catch (error) {
-      toast.error('Something went wrong')
+      toast({ title: 'Something went wrong', variant: 'destructive' })
     } finally {
       setIsLoading(false)
     }
@@ -190,13 +192,13 @@ export default function SettingsPage() {
 
     // Validate file type
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      toast.error('Please upload a valid image file (JPG, PNG, or WebP)')
+      toast({ title: 'Please upload a valid image file (JPG, PNG, or WebP)', variant: 'destructive' })
       return
     }
 
     // Validate file size (5MB limit)
     if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image size must be less than 5MB')
+      toast({ title: 'Image size must be less than 5MB', variant: 'destructive' })
       return
     }
 
@@ -220,14 +222,14 @@ export default function SettingsPage() {
 
       if (response.ok) {
         const { avatarUrl } = await response.json()
-        toast.success('Profile picture updated!')
+        toast({ title: 'Profile picture updated!', variant: 'success' })
         await update({ avatar: avatarUrl }) // Update session
       } else {
-        toast.error('Failed to upload image')
+        toast({ title: 'Failed to upload image', variant: 'destructive' })
         setAvatarPreview(null)
       }
     } catch (error) {
-      toast.error('Failed to upload image')
+      toast({ title: 'Failed to upload image', variant: 'destructive' })
       setAvatarPreview(null)
     } finally {
       setIsLoading(false)
@@ -254,8 +256,8 @@ export default function SettingsPage() {
         body: JSON.stringify({ password, forceDelete }),
       })
 
-      if (response.ok) {
-        toast.success('Account deleted successfully')
+        if (response.ok) {
+        toast({ title: 'Account deleted successfully', variant: 'success' })
         setShowPasswordPrompt(false)
         setShowActiveTasksWarning(false)
         router.push('/')
@@ -271,12 +273,12 @@ export default function SettingsPage() {
           setDeletePassword(password)
           setShowPasswordPrompt(false)
           setShowActiveTasksWarning(true)
-        } else {
-          toast.error(error.error || error.message || 'Failed to delete account')
+          } else {
+          toast({ title: error.error || error.message || 'Failed to delete account', variant: 'destructive' })
         }
       }
     } catch (error) {
-      toast.error('Something went wrong')
+      toast({ title: 'Something went wrong', variant: 'destructive' })
     } finally {
       setDeleteLoading(false)
     }
@@ -626,6 +628,22 @@ export default function SettingsPage() {
                       <input type="checkbox" className="sr-only peer" defaultChecked />
                       <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                     </label>
+                  </div>
+
+                  <div className="flex items-center justify-between py-4 border-b border-border/60">
+                    <div className="flex-1">
+                      <h4 className="text-sm font-medium text-foreground">Blocked Users</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Manage users you've blocked from contacting you
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => router.push('/settings/blocked-users')}
+                      className="px-4 py-2 text-sm font-medium text-foreground hover:text-[color:var(--accent-from)] transition-colors flex items-center gap-2"
+                    >
+                      <NoSymbolIcon className="w-4 h-4" />
+                      Manage
+                    </button>
                   </div>
                 </div>
 

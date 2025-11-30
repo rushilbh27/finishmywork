@@ -128,16 +128,6 @@ export function PublicFooter() {
                   Terms of Service
                 </Link>
               </li>
-              <li>
-                <Link href="/cookies" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Cookie Policy
-                </Link>
-              </li>
-              <li>
-                <Link href="/guidelines" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Community Guidelines
-                </Link>
-              </li>
             </ul>
           </motion.div>
 

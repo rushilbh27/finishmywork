@@ -23,6 +23,15 @@ export async function GET() {
         major: true,
         year: true,
         location: true,
+        isSuspended: true,
+        suspendedAt: true,
+        suspensionReason: true,
+        _count: {
+          select: {
+            postedTasks: true,
+            acceptedTasks: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' }
     })

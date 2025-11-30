@@ -16,7 +16,6 @@ export async function POST(req: Request) {
     }
 
     const otpHash = hashOTP(otp)
-    // @ts-ignore - model exists in runtime schema
     const record = await (prisma as any).passwordResetToken.findUnique({ where: { tokenHash: otpHash } })
     if (!record || record.email !== email) {
       return NextResponse.json({ message: 'Invalid OTP' }, { status: 400 })
@@ -28,7 +27,6 @@ export async function POST(req: Request) {
     const hashed = await bcrypt.hash(String(newPassword), 12)
     await prisma.user.update({ where: { email }, data: { password: hashed } })
 
-    // @ts-ignore - model exists in runtime schema
     await (prisma as any).passwordResetToken.delete({ where: { tokenHash: otpHash } })
 
     return NextResponse.json({ ok: true })

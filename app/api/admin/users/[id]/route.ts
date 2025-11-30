@@ -13,11 +13,8 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = parseInt(params.id)
-    if (isNaN(userId)) {
-      return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 })
-    }
-
+    const userId = params.id
+    
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -69,11 +66,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = parseInt(params.id)
-    
-    if (isNaN(userId)) {
-      return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 })
-    }
+    const userId = params.id
 
     // Check if trying to delete another admin
     const userToDelete = await prisma.user.findUnique({

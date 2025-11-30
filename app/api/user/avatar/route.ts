@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     // Update user avatar in database
     const avatarUrl = `/uploads/avatars/${filename}`
     await prisma.user.update({
-      where: { id: parseInt(session.user.id as string) },
+      where: { id: session.user.id },
       data: { avatar: avatarUrl },
     })
 

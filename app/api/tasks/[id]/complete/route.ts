@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { notifyTaskCompleted } from '@/lib/notifications'
+import { broadcastTaskUpdate } from '@/lib/realtime'
 
 export async function PATCH(
   request: NextRequest,
@@ -15,19 +16,11 @@ export async function PATCH(
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
     }
 
-    const taskId = parseInt(params.id, 10)
+    const taskId = params.id
     
-    if (isNaN(taskId)) {
-      return NextResponse.json(
-        { message: 'Invalid task ID' },
-        { status: 400 }
-      )
-    }
-
-    const userId = parseInt(String(session.user.id))
+    const userId = String(session.user.id)
 
     // Email verification guard
-    // Email verification guard (schema fields exist at runtime)
     const dbUser = (await prisma.user.findUnique({
       where: { id: userId },
     })) as any
@@ -102,14 +95,12 @@ export async function PATCH(
 
     // Emit real-time update and notifications
     try {
-      await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/socket`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'task:completed',
-          task: updatedTask
-        })
-      })
+      // Broadcast via the central realtime emitter so SSE clients receive 'task:completed'
+      try {
+        broadcastTaskUpdate('completed', updatedTask.id, updatedTask)
+      } catch (bErr) {
+        console.error('broadcastTaskUpdate error:', bErr)
+      }
       
       // Notify both poster and accepter about task completion
       if (existingTask.accepterId) {

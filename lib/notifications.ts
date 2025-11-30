@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { emitNotification } from '@/lib/socketServer'
+import { broadcastNotification } from '@/lib/realtime'
 
 export type NotificationType = 
   | 'TASK_ACCEPTED'
@@ -10,7 +10,7 @@ export type NotificationType =
   | 'SYSTEM_ALERT'
 
 interface CreateNotificationParams {
-  userId: number
+  userId: string
   type: NotificationType
   title: string
   body: string
@@ -29,8 +29,8 @@ export async function createNotification(params: CreateNotificationParams) {
       }
     })
 
-    // Emit to user via socket
-    emitNotification(params.userId, notification)
+    // Broadcast to user via SSE
+    broadcastNotification(params.userId, notification)
 
     return notification
   } catch (error) {
@@ -40,7 +40,7 @@ export async function createNotification(params: CreateNotificationParams) {
 }
 
 // Convenience functions for common notification types
-export async function notifyTaskAccepted(ownerId: number, taskTitle: string, taskId: number) {
+export async function notifyTaskAccepted(ownerId: string, taskTitle: string, taskId: string) {
   return createNotification({
     userId: ownerId,
     type: 'TASK_ACCEPTED',
@@ -50,7 +50,7 @@ export async function notifyTaskAccepted(ownerId: number, taskTitle: string, tas
   })
 }
 
-export async function notifyTaskUnassigned(ownerId: number, taskTitle: string, taskId: number) {
+export async function notifyTaskUnassigned(ownerId: string, taskTitle: string, taskId: string) {
   return createNotification({
     userId: ownerId,
     type: 'TASK_UNASSIGNED',
@@ -60,7 +60,7 @@ export async function notifyTaskUnassigned(ownerId: number, taskTitle: string, t
   })
 }
 
-export async function notifyTaskCompleted(ownerId: number, taskTitle: string, taskId: number) {
+export async function notifyTaskCompleted(ownerId: string, taskTitle: string, taskId: string) {
   return createNotification({
     userId: ownerId,
     type: 'TASK_COMPLETED',
@@ -70,7 +70,74 @@ export async function notifyTaskCompleted(ownerId: number, taskTitle: string, ta
   })
 }
 
-export async function notifyNewMessage(userId: number, senderName: string, taskId: number) {
+export async function notifyTaskCreated(task: any) {
+  try {
+    // Find nearby users (same university or same location) excluding poster
+    const candidates = await prisma.user.findMany({
+      where: {
+        AND: [
+          { id: { not: task.posterId } },
+          { isSuspended: false },
+          {
+            OR: [
+              { university: task.poster?.university || undefined },
+              { location: task.location || undefined },
+            ],
+          },
+        ],
+      },
+      select: { id: true },
+    })
+
+    const title = `🆕 New task posted: ${task.title}`
+    const body = 'Click to view task details'
+    const link = `/tasks/${task.id}`
+
+    for (const c of candidates) {
+      await createNotification({
+        userId: c.id,
+        type: 'SYSTEM_ALERT',
+        title,
+        body,
+        link,
+      })
+    }
+
+    return true
+  } catch (error) {
+    console.error('Error notifying task created:', error)
+    return false
+  }
+}
+
+export async function notifyWaitlistApproved(email: string) {
+  try {
+    // If a user already exists with this email, notify them as well
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (user) {
+      await createNotification({
+        userId: user.id,
+        type: 'SYSTEM_ALERT',
+        title: `🎟️ You’ve been invited to join FinishMyWork!`,
+        body: 'Click to set up your account',
+        link: '/auth/signup',
+      })
+      // Also emit a specific waitlist:approved event for realtime listeners
+      try {
+        const { realtimeEmitter } = await import('@/lib/realtime')
+        realtimeEmitter.emit('waitlist:approved', { userId: user.id, email })
+      } catch (emitErr) {
+        console.error('Failed to emit waitlist:approved event:', emitErr)
+      }
+    }
+    return true
+  } catch (error) {
+    console.error('Error notifying waitlist approved:', error)
+    return false
+  }
+}
+
+export async function notifyNewMessage(userId: string, senderName: string, taskId: string) {
   return createNotification({
     userId,
     type: 'NEW_MESSAGE',

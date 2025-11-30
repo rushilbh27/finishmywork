@@ -17,8 +17,10 @@ import {
   TrashIcon,
   MagnifyingGlassIcon,
   LockClosedIcon,
+  FlagIcon,
+  NoSymbolIcon,
 } from '@heroicons/react/24/outline'
-import toast from 'react-hot-toast'
+import { useToast } from '@/components/ui/use-toast'
 import ConfirmDialog from '../ui/ConfirmDialog'
 import {
   Dialog,
@@ -46,6 +48,7 @@ interface User {
   role: string
   university?: string
   createdAt: string
+  isSuspended?: boolean
   _count?: { postedTasks: number; acceptedTasks: number }
 }
 
@@ -63,6 +66,7 @@ export default function AdminDashboard() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const pathname = usePathname()
+  const { toast } = useToast()
   const searchParams = useSearchParams()
 
   const [stats, setStats] = useState<AdminStats>({
@@ -89,6 +93,13 @@ export default function AdminDashboard() {
   const [selectedTask, setSelectedTask] = useState<any | null>(null)
   const [userLoading, setUserLoading] = useState(false)
   const [taskLoading, setTaskLoading] = useState(false)
+  const [suspendDialog, setSuspendDialog] = useState({
+    isOpen: false,
+    userId: 0,
+    userName: '',
+    reason: '',
+    sendEmail: true,
+  })
 
   // URL-synced tab from pathname
   const activeTab = useMemo<'overview' | 'users' | 'tasks'>(() => {
@@ -107,7 +118,7 @@ export default function AdminDashboard() {
       const data = await res.json()
       setSelectedUser(data)
     } catch (e) {
-      toast.error('Unable to load user')
+      toast({ title: 'Unable to load user', variant: 'destructive' })
       setUserModalOpen(false)
     } finally {
       setUserLoading(false)
@@ -124,7 +135,7 @@ export default function AdminDashboard() {
       const data = await res.json()
       setSelectedTask(data)
     } catch (e) {
-      toast.error('Unable to load task')
+      toast({ title: 'Unable to load task', variant: 'destructive' })
       setTaskModalOpen(false)
     } finally {
       setTaskLoading(false)
@@ -186,7 +197,7 @@ export default function AdminDashboard() {
         setTasks(tasksData)
       }
     } catch (e) {
-      toast.error('Failed to load admin data')
+      toast({ title: 'Failed to load admin data', variant: 'destructive' })
     } finally {
       setLoading(false)
     }
@@ -206,18 +217,56 @@ export default function AdminDashboard() {
         try {
           const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' })
           if (res.ok) {
-            toast.success('User deleted successfully')
+              toast({ title: 'User deleted successfully', variant: 'success' })
             fetchAdminData()
           } else {
             const body = await res.json().catch(() => ({}))
-            toast.error(body.error || 'Failed to delete user')
+              toast({ title: body.error || 'Failed to delete user', variant: 'destructive' })
           }
         } catch (e) {
-          toast.error('Error deleting user')
+            toast({ title: 'Error deleting user', variant: 'destructive' })
         }
         setConfirmDialog((p) => ({ ...p, isOpen: false }))
       },
     })
+  }
+
+  const suspendUser = (userId: number, userName: string) => {
+    setSuspendDialog({
+      isOpen: true,
+      userId,
+      userName,
+      reason: '',
+      sendEmail: true,
+    })
+  }
+
+  const handleSuspendUser = async () => {
+    try {
+      const res = await fetch(`/api/admin/users/${suspendDialog.userId}/suspend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason: suspendDialog.reason,
+          sendEmail: suspendDialog.sendEmail,
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        toast({ title: 'User suspended successfully', variant: 'success' })
+        if (data.emailSent) {
+          toast({ title: 'Suspension email sent', variant: 'success' })
+        }
+        fetchAdminData()
+      } else {
+        const body = await res.json().catch(() => ({}))
+        toast({ title: body.error || 'Failed to suspend user', variant: 'destructive' })
+      }
+    } catch (e) {
+      toast({ title: 'Error suspending user', variant: 'destructive' })
+    }
+    setSuspendDialog({ isOpen: false, userId: 0, userName: '', reason: '', sendEmail: true })
   }
 
   const deleteTask = (taskId: number, taskTitle: string) => {
@@ -229,13 +278,13 @@ export default function AdminDashboard() {
         try {
           const res = await fetch(`/api/admin/tasks/${taskId}`, { method: 'DELETE' })
           if (res.ok) {
-            toast.success('Task deleted successfully')
+            toast({ title: 'Task deleted successfully', variant: 'success' })
             fetchAdminData()
           } else {
-            toast.error('Failed to delete task')
+            toast({ title: 'Failed to delete task', variant: 'destructive' })
           }
         } catch (e) {
-          toast.error('Error deleting task')
+          toast({ title: 'Error deleting task', variant: 'destructive' })
         }
         setConfirmDialog((p) => ({ ...p, isOpen: false }))
       },
@@ -326,6 +375,22 @@ export default function AdminDashboard() {
               </button>
             ))}
           </nav>
+          
+          {/* Additional Admin Actions */}
+          <button
+            onClick={() => router.push('/admin/reports')}
+            className="ml-3 inline-flex items-center gap-2 py-2.5 px-6 rounded-xl font-medium text-sm bg-gradient-to-r from-red-500/20 to-orange-500/20 hover:from-red-500/30 hover:to-orange-500/30 text-red-300 border border-red-500/30 transition-all duration-200 shadow-sm hover:scale-105"
+          >
+            <FlagIcon className="w-4 h-4" />
+            Reports
+          </button>
+          <button
+            onClick={() => router.push('/admin/waitlist')}
+            className="ml-3 inline-flex items-center gap-2 py-2.5 px-6 rounded-xl font-medium text-sm bg-gradient-to-r from-green-500/20 to-emerald-500/20 hover:from-green-500/30 hover:to-emerald-500/30 text-green-300 border border-green-500/30 transition-all duration-200 shadow-sm hover:scale-105"
+          >
+            <UsersIcon className="w-4 h-4" />
+            Waitlist
+          </button>
         </div>
 
         {/* Overview */}
@@ -425,6 +490,20 @@ export default function AdminDashboard() {
                             >
                               <EyeIcon className="w-4 h-4" />
                             </button>
+                            {user.role !== 'ADMIN' && !user.isSuspended && (
+                              <button 
+                                onClick={() => suspendUser(user.id, user.name)} 
+                                className="p-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 rounded-lg border border-orange-500/30 transition-all"
+                                aria-label={`Suspend ${user.name}`}
+                              >
+                                <NoSymbolIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                            {user.isSuspended && (
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
+                                Suspended
+                              </span>
+                            )}
                             {user.role !== 'ADMIN' && (
                               <button 
                                 onClick={() => deleteUser(user.id, user.name)} 
@@ -647,6 +726,51 @@ export default function AdminDashboard() {
           )}
           <DialogFooter>
             <DialogClose className="rounded-xl px-4 py-2 bg-white/10 border border-white/20">Close</DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Suspend User Dialog */}
+      <Dialog open={suspendDialog.isOpen} onOpenChange={(open) => !open && setSuspendDialog({ isOpen: false, userId: 0, userName: '', reason: '', sendEmail: true })}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-left">Suspend User</DialogTitle>
+            <DialogDescription className="text-left">
+              Suspend {suspendDialog.userName}'s account
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Reason for suspension:</label>
+              <textarea
+                className="w-full px-3 py-2 bg-surface/50 border border-border/40 rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-none"
+                rows={3}
+                placeholder="Enter reason for suspension..."
+                value={suspendDialog.reason}
+                onChange={(e) => setSuspendDialog(p => ({ ...p, reason: e.target.value }))}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="sendEmail"
+                checked={suspendDialog.sendEmail}
+                onChange={(e) => setSuspendDialog(p => ({ ...p, sendEmail: e.target.checked }))}
+                className="rounded border-border/40"
+              />
+              <label htmlFor="sendEmail" className="text-sm text-foreground cursor-pointer">
+                Send suspension email to user
+              </label>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <DialogClose className="rounded-xl px-4 py-2 bg-white/10 border border-white/20">Cancel</DialogClose>
+            <button
+              onClick={handleSuspendUser}
+              className="rounded-xl px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/30 transition-all"
+            >
+              Suspend User
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

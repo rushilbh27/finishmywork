@@ -11,11 +11,7 @@ export async function GET() {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
     }
 
-    const userIdRaw = session.user.id
-    const userId = typeof userIdRaw === 'string' ? parseInt(userIdRaw, 10) : userIdRaw
-    if (!Number.isInteger(userId)) {
-      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 })
-    }
+    const userId = String(session.user.id)
 
     const user = await prisma.user.findUnique({
       where: { id: userId },

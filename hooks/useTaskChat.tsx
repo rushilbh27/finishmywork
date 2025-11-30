@@ -1,34 +1,37 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRealtime } from './useRealtime'
 
 export interface ChatUser {
-  id: number
+  id: string
   name: string | null
   avatar?: string | null
 }
 
 export interface ChatMessage {
-  id: number
-  taskId: number
-  senderId: number
-  receiverId: number
+  id: string
+  taskId: string
+  senderId: string
+  receiverId: string
   content: string
+  type?: string
+  mediaUrl?: string | null
   createdAt: string
   sender?: ChatUser | null
 }
 
 interface UseTaskChatOptions {
-  taskId: number | null
-  userId: number | null
+  taskId: string | null
+  userId: string | null
 }
 
 interface UseTaskChatReturn {
   messages: ChatMessage[]
   loading: boolean
   error: string | null
-  typingUsers: number[]
-  sendMessage: (content: string) => Promise<void>
+  typingUsers: string[]
+  sendMessage: (content: string, type?: string, mediaUrl?: string) => Promise<void>
   startTyping: () => void
   stopTyping: () => void
   isConnected: boolean
@@ -38,14 +41,12 @@ export function useTaskChat({ taskId, userId }: UseTaskChatOptions): UseTaskChat
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [typingUsers, setTypingUsers] = useState<number[]>([])
-  const [isConnected, setIsConnected] = useState(false)
+  const [typingUsers, setTypingUsers] = useState<string[]>([])
+  const typingSetRef = useRef<Set<string>>(new Set())
 
-  const eventSourceRef = useRef<EventSource | null>(null)
-  const typingSetRef = useRef<Set<number>>(new Set())
+  const { connected, on } = useRealtime()
 
-  const taskChannel = useMemo(() => (taskId ? `task-${taskId}` : null), [taskId])
-
+  // Fetch initial messages
   useEffect(() => {
     if (!taskId) return
 
@@ -89,74 +90,56 @@ export function useTaskChat({ taskId, userId }: UseTaskChatOptions): UseTaskChat
     }
   }, [taskId])
 
+  // Listen for new messages
   useEffect(() => {
     if (!taskId) return
 
-    // Close existing EventSource connection
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close()
-      eventSourceRef.current = null
-    }
+    const unsubscribe = on('message', (event) => {
+      if (event.type !== 'message') return
+      
+      const { taskId: msgTaskId, message } = event.data
+      if (String(msgTaskId) !== String(taskId)) return
 
-    // Set up real-time connection using Server-Sent Events
-    const eventSource = new EventSource(`/api/chat/events?taskId=${taskId}`)
-    eventSourceRef.current = eventSource
+      setMessages((prev) => {
+        const exists = prev.some((existing) => existing.id === message.id)
+        if (exists) return prev
+        const next = [...prev, message]
+        return next.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      })
+    })
 
-    eventSource.onopen = () => {
-      console.log('🔗 SSE connected for task', taskId)
-      setIsConnected(true)
-    }
+    return unsubscribe
+  }, [taskId, on])
 
-    eventSource.onerror = (error) => {
-      console.error('❌ SSE connection error:', error)
-      setIsConnected(false)
-    }
+  // Listen for typing indicators
+  useEffect(() => {
+    if (!taskId || !userId) return
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        
-        if (data.type === 'message') {
-          const message = data.message
-          if (!message || message.taskId !== taskId) return
-          
-          setMessages((prev) => {
-            const exists = prev.some((existing) => existing.id === message.id)
-            if (exists) return prev
-            const next = [...prev, message]
-            return next.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-          })
-        } else if (data.type === 'typing') {
-          const { userId: typingUserId, isTyping } = data
-          if (!typingUserId || typingUserId === userId) return
-          
-          const typingId = Number.parseInt(typingUserId, 10)
-          if (Number.isNaN(typingId)) return
+    const unsubscribe = on('typing', (event) => {
+      if (event.type !== 'typing') return
+      
+      const { taskId: typingTaskId, userId: typingUserId, isTyping } = event.data
+      if (String(typingTaskId) !== String(taskId)) return
+      if (typingUserId === userId) return // Ignore own typing
 
-          const typingSet = typingSetRef.current
-          if (isTyping) {
-            typingSet.add(typingId)
-          } else {
-            typingSet.delete(typingId)
-          }
-          setTypingUsers(Array.from(typingSet))
-        }
-      } catch (error) {
-        console.error('Error parsing SSE message:', error)
+      const typingSet = typingSetRef.current
+      if (isTyping) {
+        typingSet.add(typingUserId)
+      } else {
+        typingSet.delete(typingUserId)
       }
-    }
+      setTypingUsers(Array.from(typingSet))
+    })
 
     return () => {
-      eventSource.close()
-      eventSourceRef.current = null
+      unsubscribe()
       typingSetRef.current.clear()
       setTypingUsers([])
-      setIsConnected(false)
     }
-  }, [taskId, userId])
+  }, [taskId, userId, on])
 
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, type: string = 'text', mediaUrl?: string) => {
       if (!taskId) throw new Error('Task ID is required to send a message')
 
       const trimmed = content.trim()
@@ -165,7 +148,12 @@ export function useTaskChat({ taskId, userId }: UseTaskChatOptions): UseTaskChat
       const response = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId, content: trimmed }),
+        body: JSON.stringify({ 
+          taskId, 
+          content: trimmed,
+          type,
+          mediaUrl,
+        }),
       })
 
       if (!response.ok) {
@@ -211,6 +199,6 @@ export function useTaskChat({ taskId, userId }: UseTaskChatOptions): UseTaskChat
     sendMessage,
     startTyping,
     stopTyping,
-    isConnected,
+    isConnected: connected,
   }
 }

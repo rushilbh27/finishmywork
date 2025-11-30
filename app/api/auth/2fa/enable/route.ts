@@ -17,7 +17,7 @@ export async function POST(req: Request) {
 
   // Save secret and enable 2FA
   await prisma.user.update({
-    where: { id: parseInt(String(session.user.id)) },
+    where: { id: String(session.user.id) },
     data: {
       twoFactorEnabled: true,
       totpSecret: secret,

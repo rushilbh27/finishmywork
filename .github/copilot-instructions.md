@@ -15,8 +15,8 @@ This document provides guidance for AI coding agents to effectively contribute t
 
 - **API Routes**: Backend logic is implemented in Next.js API routes within `app/api/`. For example, task-related endpoints are in `app/api/tasks/`.
 - **Prisma Client**: Use the shared Prisma client instance from `lib/prisma.ts`.
-- **IDs are Integers**: All database model IDs (`User`, `Task`, etc.) are integers. When handling API route parameters, always parse them to integers (e.g., `parseInt(params.id)`).
-- **NextAuth Session ID Type**: `session.user.id` is stored as a **string** but database IDs are **integers**. Always convert with `parseInt(String(session.user.id))` before comparing with database IDs.
+- **IDs are Strings**: All database model IDs (`User`, `Task`, etc.) are strings (CUID). When handling API route parameters, use them directly or convert with `String()`.
+- **NextAuth Session ID Type**: `session.user.id` is stored as a **string** and database IDs are also **strings (CUID)**. Use `session.user.id` directly or `String(session.user.id)` for consistency when comparing with database IDs.
 - **Real-time Messaging**: Socket.IO doesn't work with Next.js App Router without a custom server. The chat system uses **3-second polling** as a fallback (`hooks/useTaskChat.tsx`). Messages are fetched periodically and auto-scroll is handled via `scrollIntoView()`.
 - **Socket.IO Events**: For real-time updates, broadcast events using `broadcastMessage` from `lib/socketServer.ts`. Note: This is set up but not functional in production - polling is used instead.
 - **Location-Based Features**: Users and Tasks have a mandatory `location` string. Tasks inherit their location from the user who posts them. See `LOCATION_FEATURE.md` for more details.

@@ -2,19 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { messageBroadcaster } from '@/lib/messageBroadcaster'
+import { broadcastMessage } from '@/lib/realtime'
 import { notifyNewMessage } from '@/lib/notifications'
 
-const parseId = (value: unknown) => {
-  if (typeof value === 'number' && Number.isInteger(value)) return value
-  if (typeof value === 'string') {
-    const parsed = Number.parseInt(value, 10)
-    if (!Number.isNaN(parsed)) return parsed
-  }
+const parseId = (value: unknown): string | null => {
+  if (typeof value === 'string' && value.trim().length > 0) return value
+  if (typeof value === 'number') return String(value)
   return null
 }
 
-async function requireTaskWithAccess(taskId: number, userId: number) {
+async function requireTaskWithAccess(taskId: string, userId: string) {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
     select: {
@@ -28,8 +25,25 @@ async function requireTaskWithAccess(taskId: number, userId: number) {
     return { task: null, authorized: false }
   }
 
-  const isPoster = task.posterId === userId
-  const isAccepter = task.accepterId === userId
+  const isPoster = task.posterId?.toString() === userId
+  const isAccepter = task.accepterId?.toString() === userId
+
+  // Check if either party has blocked the other
+  const otherUserId = isPoster ? task.accepterId : task.posterId
+  if (otherUserId) {
+    const blockExists = await prisma.blockedUser.findFirst({
+      where: {
+        OR: [
+          { blockerId: userId, blockedId: otherUserId },
+          { blockerId: otherUserId, blockedId: userId },
+        ],
+      },
+    })
+
+    if (blockExists) {
+      return { task: null, authorized: false }
+    }
+  }
 
   return { task, authorized: isPoster || isAccepter }
 }
@@ -37,7 +51,7 @@ async function requireTaskWithAccess(taskId: number, userId: number) {
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    const userId = parseId(session?.user?.id)
+    const userId = session?.user?.id
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -84,15 +98,17 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    const userId = parseId(session?.user?.id)
+    const userId = session?.user?.id
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json().catch(() => null) as { taskId?: number | string; content?: string } | null
+    const body = await request.json().catch(() => null) as { taskId?: number | string; content?: string; type?: string; mediaUrl?: string } | null
     const taskId = parseId(body?.taskId)
     const content = body?.content?.trim()
+    const type = body?.type || 'text'
+    const mediaUrl = body?.mediaUrl || null
 
     if (!taskId || !content) {
       return NextResponse.json({ error: 'taskId and content are required' }, { status: 400 })
@@ -113,7 +129,7 @@ export async function POST(request: NextRequest) {
     }
 
     const receiverId =
-      userId === task.posterId ? task.accepterId ?? null : task.posterId
+      task.posterId?.toString() === userId ? task.accepterId ?? null : task.posterId
 
     if (!receiverId) {
       return NextResponse.json(
@@ -128,34 +144,30 @@ export async function POST(request: NextRequest) {
         senderId: userId,
         receiverId,
         content,
+        type,
+        mediaUrl,
       },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-          },
-        },
-      },
+    })
+
+    // Fetch sender info for the broadcast
+    const sender = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, avatar: true },
     })
 
     console.log(`✅ message created by user ${userId} in task ${taskId}`)
 
-    // Broadcast the new message to all connected clients for this task
+    // Broadcast the new message via SSE
     try {
-      messageBroadcaster.broadcast(String(taskId), {
-        type: 'message',
-        message: message,
-      })
+      broadcastMessage(String(taskId), { ...message, sender })
       
       // Notify the receiver about the new message
-      await notifyNewMessage(receiverId, message.sender.name || 'Someone', taskId)
+      await notifyNewMessage(receiverId, sender?.name || 'Someone', taskId)
     } catch (broadcastError) {
       console.error('Error broadcasting new message:', broadcastError)
     }
 
-    return NextResponse.json(message, { status: 201 })
+    return NextResponse.json({ ...message, sender }, { status: 201 })
   } catch (error) {
     console.error('Messages POST error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

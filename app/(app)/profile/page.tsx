@@ -136,23 +136,23 @@ export default function ProfilePage() {
         </Link>
 
         {/* Profile Header Card */}
-        <section className="rounded-2xl border border-border/60 bg-card/95 p-8 shadow-card backdrop-blur-2xl">
-          <div className="flex items-center gap-4">
+        <section className="rounded-2xl border border-border/60 bg-card/95 p-5 md:p-8 shadow-card backdrop-blur-2xl">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
             {session.user && (session.user as any).avatar ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={(session.user as any).avatar as string}
                 alt={session.user.name ?? 'Profile avatar'}
-                className="h-20 w-20 rounded-2xl border border-border/70 object-cover"
+                className="h-16 w-16 md:h-20 md:w-20 rounded-2xl border border-border/70 object-cover"
               />
             ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-border/70 bg-gradient-accent text-2xl font-semibold text-white">
+              <div className="flex h-16 w-16 md:h-20 md:w-20 items-center justify-center rounded-2xl border border-border/70 bg-gradient-accent text-xl md:text-2xl font-semibold text-white">
                 {initials}
               </div>
             )}
             <div className="flex-1">
-              <h1 className="text-2xl font-semibold text-foreground">{session.user?.name ?? 'User'}</h1>
-              <p className="mt-1 text-sm text-muted-foreground">{session.user?.email ?? ''}</p>
+              <h1 className="text-xl md:text-2xl font-semibold text-foreground">{session.user?.name ?? 'User'}</h1>
+              <p className="mt-1 text-xs md:text-sm text-muted-foreground">{session.user?.email ?? ''}</p>
               <p className="mt-2 text-sm text-muted-foreground">
                 Computer Science major passionate about helping fellow students
               </p>
@@ -173,7 +173,7 @@ export default function ProfilePage() {
 
           {/* Stats Row */}
           {userStats && (
-            <div className="mt-8 grid grid-cols-2 gap-6 sm:grid-cols-4">
+            <div className="mt-6 md:mt-8 grid grid-cols-2 gap-4 md:gap-6 sm:grid-cols-4">
               {[
                 {
                   icon: StarIcon,
@@ -200,8 +200,8 @@ export default function ProfilePage() {
                   <div className="mb-2 flex justify-center">
                     <Icon className="h-5 w-5 text-muted-foreground" />
                   </div>
-                  <p className="text-2xl font-semibold text-foreground">{value}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{label}</p>
+                  <p className="text-xl md:text-2xl font-semibold text-foreground">{value}</p>
+                  <p className="mt-1 text-[11px] md:text-xs text-muted-foreground">{label}</p>
                 </div>
               ))}
             </div>
@@ -209,10 +209,10 @@ export default function ProfilePage() {
         </section>
 
         {/* Reviews Section */}
-        <section className="rounded-2xl border border-border/60 bg-card/95 p-6 shadow-card backdrop-blur-2xl">
-          <h2 className="mb-4 text-lg font-semibold text-foreground">Reviews (3)</h2>
+        <section className="rounded-2xl border border-border/60 bg-card/95 p-4 md:p-6 shadow-card backdrop-blur-2xl">
+          <h2 className="mb-3 md:mb-4 text-base md:text-lg font-semibold text-foreground">Reviews (3)</h2>
           
-          <div className="space-y-4">
+          <div className="space-y-3 md:space-y-4">
             {[
               {
                 initials: 'SC',
@@ -238,9 +238,9 @@ export default function ProfilePage() {
             ].map((review) => (
               <div
                 key={review.name}
-                className="flex gap-4 rounded-xl border border-border/60 bg-surface/70 p-4"
+                className="flex flex-col sm:flex-row gap-3 sm:gap-4 rounded-xl border border-border/60 bg-surface/70 p-4"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/70 bg-surface text-sm font-semibold text-foreground">
+                <div className="flex h-9 w-9 md:h-10 md:w-10 shrink-0 items-center justify-center rounded-full border border-border/70 bg-surface text-sm font-semibold text-foreground">
                   {review.initials}
                 </div>
                 <div className="flex-1">

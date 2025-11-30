@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { createNotification } from '@/lib/notifications'
+import { broadcastReviewCreated } from '@/lib/realtime'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,23 +15,18 @@ export async function POST(request: NextRequest) {
 
     const { taskId, receiverId, rating, comment } = await request.json()
 
-    // Ensure numeric IDs for Prisma (schema uses Int)
-    const receiverIdNum = typeof receiverId === 'string' ? parseInt(receiverId, 10) : receiverId
-    const taskIdNum = typeof taskId === 'string' ? parseInt(taskId, 10) : taskId
-    const reviewerIdRaw = session.user?.id
-    const reviewerIdNum = typeof reviewerIdRaw === 'string' ? parseInt(reviewerIdRaw, 10) : reviewerIdRaw
-
-    if (!Number.isInteger(receiverIdNum) || !Number.isInteger(taskIdNum) || !Number.isInteger(reviewerIdNum)) {
-      return NextResponse.json({ message: 'Invalid IDs provided' }, { status: 400 })
-    }
+    // All IDs are now strings (CUID)
+    const reviewerId = String(session.user.id)
+    const receiverIdStr = String(receiverId)
+    const taskIdStr = String(taskId)
 
     // Verify task exists and user is involved
     const task = await prisma.task.findFirst({
       where: {
-        id: taskIdNum,
+        id: taskIdStr,
         OR: [
-          { posterId: reviewerIdNum },
-          { accepterId: reviewerIdNum }
+          { posterId: reviewerId },
+          { accepterId: reviewerId }
         ],
         status: 'COMPLETED'
       }
@@ -45,8 +42,8 @@ export async function POST(request: NextRequest) {
     // Check if user has already reviewed this task
     const existingReview = await prisma.review.findFirst({
       where: {
-        taskId: taskIdNum,
-        reviewerId: reviewerIdNum
+        taskId: taskIdStr,
+        reviewerId: reviewerId
       }
     })
 
@@ -57,44 +54,86 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create review
-    const review = await prisma.review.create({
-      data: {
-        taskId: taskIdNum,
-        reviewerId: reviewerIdNum,
-        receiverId: receiverIdNum,
-        rating,
-        comment,
-      },
-      include: {
-        reviewer: {
-          select: {
-            name: true,
-            avatar: true,
+    // Use a transaction to create review and update receiver's rating atomically
+    const result = await prisma.$transaction(async (tx) => {
+      // Create the review
+      const created = await tx.review.create({
+        data: {
+          taskId: taskIdStr,
+          reviewerId: reviewerId,
+          receiverId: receiverIdStr,
+          rating,
+          comment,
+        },
+        include: {
+          reviewer: {
+            select: { id: true, name: true, avatar: true }
           }
         }
+      })
+
+      // Fetch current receiver stats
+      const receiver = await tx.user.findUnique({ where: { id: receiverIdStr }, select: { rating: true, reviewCount: true } })
+
+      const oldRating = receiver?.rating ?? 0
+      const oldCount = receiver?.reviewCount ?? 0
+
+      const newCount = oldCount + 1
+      const newAverage = newCount === 0 ? rating : ((oldRating * oldCount) + rating) / newCount
+
+      await tx.user.update({
+        where: { id: receiverIdStr },
+        data: {
+          rating: newAverage,
+          reviewCount: newCount,
+        }
+      })
+
+      return created
+    })
+
+    // After transaction: create notifications and broadcast via SSE
+    try {
+      // Notify the receiver that they got a new review
+      await createNotification({
+        userId: receiverIdStr,
+        type: 'TASK_REVIEW',
+        title: 'New review received',
+        body: `${result.reviewer.name} left a review for your task.`,
+        link: `/tasks/${taskIdStr}`,
+      })
+
+      // Prompt the other party to leave a review if they haven't already
+      const partnerId = reviewerId === String(task.posterId) ? String(task.accepterId ?? '') : String(task.posterId)
+      if (partnerId) {
+        const partnerAlreadyReviewed = await prisma.review.findFirst({ where: { taskId: taskIdStr, reviewerId: partnerId } })
+        if (!partnerAlreadyReviewed) {
+          await createNotification({
+            userId: partnerId,
+            type: 'TASK_REVIEW',
+            title: 'How was your experience?',
+            body: `${result.reviewer.name} left a review — please rate your experience with them.`,
+            link: `/tasks/${taskIdStr}`,
+          })
+        }
       }
-    })
 
-    // Update user's average rating
-    const userReviews = await prisma.review.findMany({
-      where: { receiverId: receiverIdNum },
-      select: { rating: true }
-    })
+      // Broadcast review_created event so connected clients can refresh in real-time
+      broadcastReviewCreated(taskIdStr, { review: result, reviewerId: reviewerId, receiverId: receiverIdStr })
+    } catch (err) {
+      console.error('Error creating notifications/broadcasting for review:', err)
+    }
 
-    const averageRating = userReviews.reduce((sum, r) => sum + r.rating, 0) / userReviews.length
-
-    await prisma.user.update({
-      where: { id: receiverIdNum },
-      data: {
-        rating: averageRating,
-        reviewCount: userReviews.length,
-      }
-    })
-
-    return NextResponse.json(review, { status: 201 })
+    return NextResponse.json(result, { status: 201 })
   } catch (error) {
     console.error('Error creating review:', error)
+    // Handle unique constraint (user already reviewed concurrently)
+    // Prisma unique constraint error code is P2002
+    // @ts-ignore
+    if (error && (error.code === 'P2002' || error.meta?.target?.includes('taskId_reviewerId'))) {
+      return NextResponse.json({ message: 'You have already reviewed this task' }, { status: 409 })
+    }
+
     return NextResponse.json(
       { message: 'Internal server error' },
       { status: 500 }
@@ -114,16 +153,14 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const userIdNum = parseInt(userId, 10)
-    if (!Number.isInteger(userIdNum)) {
-      return NextResponse.json({ message: 'Invalid userId' }, { status: 400 })
-    }
+    const userIdStr = String(userId)
 
     const reviews = await prisma.review.findMany({
-      where: { receiverId: userIdNum },
+      where: { receiverId: userIdStr },
       include: {
         reviewer: {
           select: {
+            id: true,
             name: true,
             avatar: true,
           }
@@ -135,7 +172,7 @@ export async function GET(request: NextRequest) {
     })
 
     const user = await prisma.user.findUnique({
-      where: { id: userIdNum },
+      where: { id: userIdStr },
       select: {
         rating: true,
         reviewCount: true,

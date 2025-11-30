@@ -16,13 +16,7 @@ export async function PATCH(
       )
     }
 
-    const taskId = parseInt(params.id)
-    if (isNaN(taskId)) {
-      return NextResponse.json(
-        { message: 'Invalid task ID' },
-        { status: 400 }
-      )
-    }
+    const taskId = params.id
 
     // Check if task exists
     const existingTask = await prisma.task.findUnique({
@@ -45,11 +39,11 @@ export async function PATCH(
       )
     }
 
-    const userId = parseInt(String(session.user.id))
+    const userId = String(session.user.id)
 
     // Validation: Only poster or accepter can cancel
-    const isPoster = existingTask.posterId === userId
-    const isAccepter = existingTask.accepterId === userId
+    const isPoster = existingTask.posterId?.toString() === userId
+    const isAccepter = existingTask.accepterId?.toString() === userId
 
     if (!isPoster && !isAccepter) {
       return NextResponse.json(

@@ -10,7 +10,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = parseInt(String(session.user.id))
+    const userId = String(session.user.id)
 
     // Get all tasks where user is poster or accepter and status allows chat
     const tasks = await prisma.task.findMany({
@@ -42,7 +42,7 @@ export async function GET() {
     })
 
     const threads = tasks.map((task) => {
-      const isPoster = task.posterId === userId
+      const isPoster = task.posterId?.toString() === userId
       const partner = isPoster && task.accepter ? task.accepter : task.poster
       const lastMessage = task.messages[0]
 
@@ -59,7 +59,7 @@ export async function GET() {
           ? {
               content: lastMessage.content,
               createdAt: lastMessage.createdAt.toISOString(),
-              isOwn: lastMessage.senderId === userId,
+              isOwn: lastMessage.senderId?.toString() === userId,
             }
           : null,
       }

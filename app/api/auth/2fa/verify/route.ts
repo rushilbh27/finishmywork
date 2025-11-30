@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   if (!code) return NextResponse.json({ message: 'Code required' }, { status: 400 })
 
   const user = await prisma.user.findUnique({
-    where: { id: parseInt(String(session.user.id)) },
+    where: { id: String(session.user.id) },
     select: { totpSecret: true, twoFactorEnabled: true },
   })
 

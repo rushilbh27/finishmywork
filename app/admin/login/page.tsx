@@ -5,12 +5,13 @@ import { signIn, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { useEffect } from 'react'
-import toast from 'react-hot-toast'
+import { useToast } from '@/components/ui/use-toast'
 import { LockClosedIcon, UserIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 
 export default function AdminLoginPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const { toast } = useToast()
   const [email, setEmail] = useState('admin@finishmywork.com')// Pre-fill for convenience
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -41,7 +42,7 @@ export default function AdminLoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || !password) {
-      toast.error('Please fill in all fields')
+      toast({ title: 'Please fill in all fields', variant: 'destructive' })
       return
     }
 
@@ -55,13 +56,13 @@ export default function AdminLoginPage() {
       })
 
       if (result?.error) {
-        toast.error('Invalid admin credentials')
+        toast({ title: 'Invalid admin credentials', variant: 'destructive' })
       } else if (result?.ok) {
-        toast.success('Password accepted. Check your email for OTP.')
-        router.push('/admin/otp')
+        toast({ title: 'Login successful! Redirecting...', variant: 'success' })
+        router.push('/admin/dashboard')
       }
     } catch (error) {
-      toast.error('Login failed')
+      toast({ title: 'Login failed', variant: 'destructive' })
     } finally {
       setIsLoading(false)
     }

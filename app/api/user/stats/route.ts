@@ -11,10 +11,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = parseInt(session.user.id as string, 10)
-    if (isNaN(userId)) {
-      return NextResponse.json({ error: 'Invalid user id' }, { status: 400 })
-    }
+    const userId = String(session.user.id)
 
     // ✅ User info
     const user = await prisma.user.findUnique({

@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { StarIcon } from '@heroicons/react/24/solid'
 import { StarIcon as StarIconOutline } from '@heroicons/react/24/outline'
-import toast from 'react-hot-toast'
+import { useToast } from '@/components/ui/use-toast'
 
 const reviewSchema = z.object({
   rating: z.number().min(1, 'Rating is required').max(5, 'Rating must be 5 or less'),
@@ -22,6 +22,7 @@ interface ReviewFormProps {
 }
 
 export function ReviewForm({ taskId, receiverId, onReviewSubmitted }: ReviewFormProps) {
+  const { toast } = useToast()
   const [hoveredRating, setHoveredRating] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   
@@ -58,14 +59,14 @@ export function ReviewForm({ taskId, receiverId, onReviewSubmitted }: ReviewForm
       })
 
       if (response.ok) {
-        toast.success('Review submitted successfully!')
+        toast({ title: 'Review submitted successfully!', variant: 'success' })
         onReviewSubmitted()
       } else {
         const error = await response.json()
-        toast.error(error.message || 'Failed to submit review')
+        toast({ title: error.message || 'Failed to submit review', variant: 'destructive' })
       }
     } catch (error) {
-      toast.error('Something went wrong')
+      toast({ title: 'Something went wrong', variant: 'destructive' })
     } finally {
       setIsSubmitting(false)
     }
